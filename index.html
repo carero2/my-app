@@ -32,24 +32,25 @@ input{font:inherit;color:inherit}
 :focus-visible{outline:2.5px solid var(--transporte);outline-offset:2px}
 .num{font-variant-numeric:tabular-nums}
 
-/* ---- Estructura ---- */
 .vistas{flex:1;position:relative;overflow:hidden}
 .vista{position:absolute;inset:0;display:none;flex-direction:column;overflow-y:auto;
   -webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .vista.on{display:flex}
 .scroll{padding:0 20px 24px;max-width:620px;width:100%;margin:0 auto}
 
-/* ---- Barra de pestañas ---- */
 .tabs{display:flex;border-top:1px solid var(--line);background:var(--paper);
   padding-bottom:env(safe-area-inset-bottom);flex:none}
 .tabs button{flex:1;padding:9px 0 7px;display:grid;justify-items:center;gap:3px;
-  font-size:11px;color:var(--muted)}
+  font-size:11px;color:var(--muted);position:relative}
 .tabs button svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;
   stroke-linecap:round;stroke-linejoin:round}
 .tabs button[aria-current=page]{color:var(--ink)}
 .tabs button[aria-current=page] svg{stroke-width:2.1}
+.globo{position:absolute;top:6px;right:calc(50% - 20px);min-width:8px;height:8px;border-radius:99px;
+  background:var(--ocio);display:none}
+.globo.on{display:block}
 
-/* ---- Añadir ---- */
+/* Añadir */
 #anadir{padding:0 16px}
 .cinta{display:flex;justify-content:space-between;align-items:center;
   padding:14px 4px 4px;font-size:14px;color:var(--muted)}
@@ -57,14 +58,15 @@ input{font:inherit;color:inherit}
 .presu{height:4px;background:var(--hueco);border-radius:99px;margin:0 4px;overflow:hidden}
 .presu i{display:block;height:100%;background:var(--ink);border-radius:99px;transition:width .3s}
 .presu i.pasado{background:var(--comida)}
-.cifra{text-align:center;font-size:clamp(46px,15vw,68px);font-weight:600;letter-spacing:-.04em;
-  padding:16px 10px 2px;line-height:1.05}
+.cifra{text-align:center;font-size:clamp(44px,14vw,64px);font-weight:600;letter-spacing:-.04em;
+  padding:14px 10px 2px;line-height:1.05}
 .cifra.cero{color:var(--muted)}
-.notabar{display:flex;justify-content:center;padding-bottom:10px;min-height:38px}
-.notabar button{font-size:14px;color:var(--muted);padding:6px 14px;border:1px solid var(--line);
-  border-radius:99px;background:var(--card)}
-.notabar input{width:100%;max-width:340px;padding:8px 14px;text-align:center;background:var(--card);
-  border:1px solid var(--line);border-radius:99px;font-size:15px}
+.extras{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;padding:4px 0 10px;min-height:36px}
+.extras button, .extras input{font-size:14px;padding:6px 13px;border:1px solid var(--line);
+  border-radius:99px;background:var(--card);color:var(--muted)}
+.extras input{color:var(--ink);text-align:center}
+.extras input[type=text]{flex:1;min-width:150px;max-width:280px}
+.extras button.puesto{color:var(--ink)}
 .cats{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
 .cat{background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:9px 2px 7px;
   display:grid;gap:2px;justify-items:center;font-size:11px;color:var(--muted);line-height:1.2}
@@ -79,14 +81,12 @@ input{font:inherit;color:inherit}
 .editando{display:flex;justify-content:space-between;align-items:center;background:var(--hueco);
   border-radius:12px;padding:8px 8px 8px 14px;margin:10px 4px 0;font-size:14px}
 
-/* ---- Cabeceras y navegación de mes ---- */
 .titulo{padding:18px 0 2px;font-size:26px;font-weight:600;letter-spacing:-.02em}
 .navmes{display:flex;align-items:center;gap:6px;padding:12px 0 4px}
 .navmes b{flex:1;text-align:center;font-size:16px;font-weight:500}
 .navmes button{width:38px;height:38px;border-radius:50%;background:var(--card);font-size:16px}
 .navmes button:disabled{opacity:.3}
 
-/* ---- Lista ---- */
 .filtros{display:flex;gap:7px;overflow-x:auto;padding:8px 0 12px;scrollbar-width:none}
 .filtros::-webkit-scrollbar{display:none}
 .chip{flex:none;padding:7px 14px;border-radius:99px;background:var(--card);border:1px solid var(--line);
@@ -102,10 +102,10 @@ li:first-child{border-top:0}
 .txt b{display:block;font-weight:500;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .txt small{color:var(--muted);font-size:13px}
 .imp{font-weight:500;letter-spacing:-.01em}
+.subir{width:6px;height:6px;border-radius:99px;background:var(--ocio);flex:none}
 .borrar{color:var(--muted);padding:8px 0 8px 8px;font-size:15px}
 .vacio{text-align:center;color:var(--muted);padding:52px 20px;line-height:1.6}
 
-/* ---- Métricas ---- */
 .panel{background:var(--card);border-radius:18px;padding:18px;margin-top:12px}
 .granCifra{font-size:40px;font-weight:600;letter-spacing:-.035em;line-height:1.1}
 .delta{font-size:14px;color:var(--muted);margin-top:4px}
@@ -119,19 +119,23 @@ li:first-child{border-top:0}
 .pista i{display:block;height:100%;border-radius:99px}
 svg.graf{width:100%;height:118px;overflow:visible;margin-top:10px;display:block}
 
-/* ---- Ajustes ---- */
-.grupo{background:var(--card);border-radius:16px;margin-top:14px;overflow:hidden}
+.grupo{background:var(--card);border-radius:16px;margin-top:8px;overflow:hidden}
 .grupo > *{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;
   padding:14px 16px;border-top:1px solid var(--line);text-align:left;font-size:16px}
 .grupo > *:first-child{border-top:0}
 .grupo input{width:110px;text-align:right;background:none;border:0;font-size:16px}
+.grupo input.ancho{width:100%;text-align:left;font-size:15px}
+.campo{display:block!important}
+.campo span{display:block;font-size:13px;color:var(--muted);margin-bottom:3px}
 .rojo{color:var(--comida)}
+.acento{color:var(--transporte);font-weight:500}
 .pieNota{color:var(--muted);font-size:13px;line-height:1.55;padding:14px 4px 0}
 .etiqueta{font-size:13px;color:var(--muted);padding:20px 4px 0}
+.estado{font-size:13px;color:var(--muted);padding:8px 4px 0;line-height:1.5}
 
 .aviso{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translate(-50%,10px);
   background:var(--ink);color:var(--paper);padding:11px 20px;border-radius:99px;font-size:15px;
-  opacity:0;pointer-events:none;transition:.2s;z-index:40}
+  opacity:0;pointer-events:none;transition:.2s;z-index:40;max-width:88vw;text-align:center}
 .aviso.on{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -140,19 +144,17 @@ svg.graf{width:100%;height:118px;overflow:visible;margin-top:10px;display:block}
 
 <div class="vistas">
 
-  <!-- 1. Añadir -->
   <section class="vista on" id="anadir">
     <div class="cinta"><span id="cintaTxt"></span><span id="cintaDer"></span></div>
     <div class="presu" id="presuBarra" hidden><i></i></div>
     <div id="avisoEdicion"></div>
     <div class="cifra cero" id="cifra">0,00 €</div>
-    <div class="notabar" id="notabar"></div>
+    <div class="extras" id="extras"></div>
     <div class="cats" id="cats"></div>
     <div class="teclas" id="teclas"></div>
     <button class="guardar" id="guardar">Guardar gasto</button>
   </section>
 
-  <!-- 2. Gastos -->
   <section class="vista" id="lista">
     <div class="scroll">
       <div class="titulo">Gastos</div>
@@ -162,7 +164,6 @@ svg.graf{width:100%;height:118px;overflow:visible;margin-top:10px;display:block}
     </div>
   </section>
 
-  <!-- 3. Métricas -->
   <section class="vista" id="metricas">
     <div class="scroll">
       <div class="titulo">Métricas</div>
@@ -171,10 +172,23 @@ svg.graf{width:100%;height:118px;overflow:visible;margin-top:10px;display:block}
     </div>
   </section>
 
-  <!-- 4. Ajustes -->
   <section class="vista" id="ajustes">
     <div class="scroll">
       <div class="titulo">Ajustes</div>
+
+      <div class="etiqueta">Sincronización</div>
+      <div class="grupo">
+        <label class="campo"><span>Dirección del Worker</span>
+          <input id="cfgUrl" class="ancho" type="url" inputmode="url" autocapitalize="off"
+                 autocorrect="off" spellcheck="false" placeholder="https://…workers.dev"></label>
+        <label class="campo"><span>Clave</span>
+          <input id="cfgClave" class="ancho" type="password" autocapitalize="off"
+                 autocorrect="off" spellcheck="false" placeholder="Tu clave secreta"></label>
+        <button class="acento" id="cfgProbar">Guardar y comprobar</button>
+        <button id="cfgAhora">Sincronizar ahora<span id="cfgPend" class="num"></span></button>
+        <button class="rojo" id="cfgQuitar">Desconectar de la nube</button>
+      </div>
+      <p class="estado" id="cfgEstado"></p>
 
       <div class="etiqueta">Presupuesto</div>
       <div class="grupo">
@@ -195,9 +209,9 @@ svg.graf{width:100%;height:118px;overflow:visible;margin-top:10px;display:block}
         <button class="rojo" id="borrarTodo">Borrar todos los gastos</button>
       </div>
 
-      <p class="pieNota">Los gastos se guardan solo en este dispositivo, en el almacenamiento del
-      navegador. Si borras los datos de sitios web o cambias de móvil, se pierden. Descarga una
-      copia de vez en cuando y guárdala en iCloud Drive.</p>
+      <p class="pieNota">Con la sincronización activa, tus gastos viven en tu Worker y este
+      dispositivo guarda una copia para funcionar sin cobertura. Sin ella, existen solo aquí.
+      En ambos casos conviene descargar una copia de vez en cuando.</p>
       <p class="pieNota" id="version"></p>
     </div>
   </section>
@@ -211,7 +225,7 @@ svg.graf{width:100%;height:118px;overflow:visible;margin-top:10px;display:block}
     <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Gastos</button>
   <button data-v="metricas">
     <svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>Métricas</button>
-  <button data-v="ajustes">
+  <button data-v="ajustes"><i class="globo" id="globoPend"></i>
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6L18 18M18 6l-1.4 1.4M7.4 16.6L6 18"/></svg>Ajustes</button>
 </nav>
 
@@ -229,27 +243,41 @@ const CATS = [
   {id:'salud',      nom:'Salud',      emo:'💊'},
   {id:'otros',      nom:'Otros',      emo:'📦'},
 ];
-const CLAVE = 'gastos.v1', CLAVE_PRESU = 'gastos.presupuesto';
+const K = { gastos:'gastos.v1', presu:'gastos.presupuesto', cola:'gastos.cola',
+            cfg:'gastos.nube', sync:'gastos.ultimaSync' };
 const cat = id => CATS.find(c => c.id === id) || CATS.at(-1);
 const color = id => getComputedStyle(document.documentElement).getPropertyValue('--'+id).trim() || '#888';
-const eur = n => n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+const eur  = n => n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
 const eur0 = n => Math.round(n).toLocaleString('es-ES') + ' €';
 const escapar = s => String(s).replace(/[<>&"]/g, m => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[m]));
+const leerJSON = (k, alt) => { try { return JSON.parse(localStorage.getItem(k)) ?? alt } catch { return alt } };
 
-let gastos = (() => { try { return JSON.parse(localStorage.getItem(CLAVE)) || [] } catch { return [] } })();
-let presupuesto = parseFloat(localStorage.getItem(CLAVE_PRESU)) || 0;
+let gastos      = leerJSON(K.gastos, []);
+let colaBorrados= leerJSON(K.cola, []);
+let nube        = leerJSON(K.cfg, null);
+let presupuesto = parseFloat(localStorage.getItem(K.presu)) || 0;
+let ultimaSync  = parseInt(localStorage.getItem(K.sync)) || 0;
 
 function salvar(){
-  try { localStorage.setItem(CLAVE, JSON.stringify(gastos)) }
-  catch { avisar('No se pudo guardar. ¿Sin espacio?') }
+  try {
+    localStorage.setItem(K.gastos, JSON.stringify(gastos));
+    localStorage.setItem(K.cola, JSON.stringify(colaBorrados));
+  } catch { avisar('No se pudo guardar en este dispositivo') }
+  marcarPendientes();
 }
 function avisar(t){
   const a = document.getElementById('aviso');
   a.textContent = t; a.classList.add('on');
-  clearTimeout(a._t); a._t = setTimeout(() => a.classList.remove('on'), 1900);
+  clearTimeout(a._t); a._t = setTimeout(() => a.classList.remove('on'), 2200);
+}
+const pendientes = () => gastos.filter(g => g.pend).length + colaBorrados.length;
+function marcarPendientes(){
+  const n = pendientes();
+  document.getElementById('globoPend').classList.toggle('on', n > 0 && !!nube);
+  const et = document.getElementById('cfgPend');
+  if(et) et.textContent = n ? n + ' sin subir' : '';
 }
 
-/* Mes de trabajo: 0 = actual, -1 = anterior... */
 let offMes = 0;
 const inicioMes = off => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth()+off, 1) };
 const finMes    = off => new Date(inicioMes(off+1).getTime() - 1);
@@ -261,24 +289,99 @@ const nombreMes = off => inicioMes(off)
   .toLocaleDateString('es-ES',{month:'long', year:'numeric'}).replace(/^./, m => m.toUpperCase());
 const suma = gs => gs.reduce((s,g) => s + g.c, 0);
 
+/* ============ Sincronización ============ */
+const limpio = g => ({ id:g.id, c:g.c, cat:g.cat, n:g.n, t:g.t });
+
+async function llamar(ruta, opciones = {}){
+  if(!nube) throw new Error('sin configurar');
+  const r = await fetch(nube.url.replace(/\/+$/,'') + ruta, {
+    ...opciones,
+    headers: { 'Authorization': 'Bearer ' + nube.clave,
+               'Content-Type': 'application/json', ...(opciones.headers || {}) },
+  });
+  if(r.status === 401) throw new Error('clave');
+  if(!r.ok) throw new Error('http ' + r.status);
+  return r.json();
+}
+
+let sincronizando = false;
+async function sincronizar({ ruidoso = false } = {}){
+  if(!nube || sincronizando) return;
+  if(!navigator.onLine){ if(ruidoso) avisar('Sin conexión'); return; }
+  sincronizando = true;
+  try {
+    const suben = gastos.filter(g => g.pend);
+    if(suben.length) {
+      await llamar('/gastos', { method:'POST', body: JSON.stringify(suben.map(limpio)) });
+      suben.forEach(g => delete g.pend);
+    }
+    if(colaBorrados.length){
+      await llamar('/borrados', { method:'POST', body: JSON.stringify(colaBorrados) });
+      colaBorrados = [];
+    }
+
+    const { gastos: remotos = [], borrados = [] } = await llamar('/gastos');
+    const tumbas = new Set(borrados);
+    const local = new Map(gastos.map(g => [g.id, g]));
+
+    for(const r of remotos){
+      const mio = local.get(r.id);
+      if(!mio) local.set(r.id, r);           // llega del servidor
+      else if(!mio.pend) Object.assign(mio, r); // el servidor manda si no tengo cambios sin subir
+    }
+    for(const id of tumbas) local.delete(id);
+
+    gastos = [...local.values()];
+    ultimaSync = Date.now();
+    localStorage.setItem(K.sync, ultimaSync);
+    salvar(); repintar();
+    if(ruidoso) avisar('Sincronizado · ' + gastos.length + ' gastos');
+  } catch(e){
+    const msg = e.message === 'clave' ? 'Clave incorrecta'
+              : e.message.startsWith('http') ? 'El servidor respondió ' + e.message.slice(5)
+              : 'No se pudo conectar';
+    if(ruidoso) avisar(msg);
+    pintarEstado(msg);
+  } finally {
+    sincronizando = false;
+    marcarPendientes();
+  }
+}
+
+function pintarEstado(error){
+  const e = document.getElementById('cfgEstado');
+  if(!nube){ e.textContent = 'Sin configurar: los gastos solo existen en este dispositivo.'; return }
+  const n = pendientes();
+  const cuando = ultimaSync
+    ? new Date(ultimaSync).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})
+    : 'nunca';
+  e.textContent = (error ? error + '. ' : '') +
+    `Última sincronización: ${cuando}.` + (n ? ` ${n} cambio${n===1?'':'s'} esperando a subir.` : '');
+}
+
 /* ============ Navegación ============ */
 const vistas = ['anadir','lista','metricas','ajustes'];
+let vistaActual = 'anadir';
 function ir(v){
+  vistaActual = v;
   vistas.forEach(x => document.getElementById(x).classList.toggle('on', x === v));
   document.querySelectorAll('.tabs button').forEach(b =>
     b.dataset.v === v ? b.setAttribute('aria-current','page') : b.removeAttribute('aria-current'));
-  if(v === 'lista') pintarLista();
-  if(v === 'metricas') pintarMetricas();
-  if(v === 'ajustes') pintarAjustes();
-  if(v === 'anadir') pintarCinta();
+  repintar();
   document.getElementById(v).scrollTop = 0;
+}
+function repintar(){
+  if(vistaActual === 'lista') pintarLista();
+  if(vistaActual === 'metricas') pintarMetricas();
+  if(vistaActual === 'ajustes') pintarAjustes();
+  pintarCinta();
 }
 document.getElementById('tabs').addEventListener('click', e => {
   const b = e.target.closest('button'); if(b) ir(b.dataset.v);
 });
 
 /* ============ 1. Añadir ============ */
-let buffer = '', catSel = 'comida', editando = null;
+let buffer = '', catSel = 'comida', editando = null, fechaSel = null, nota = '';
 
 document.getElementById('cats').innerHTML = CATS.map(c =>
   `<button class="cat" data-id="${c.id}" aria-pressed="false"><span>${c.emo}</span>${c.nom}</button>`).join('');
@@ -305,14 +408,12 @@ function marcarCat(){
 }
 function pintarCinta(){
   const gs = delMes(0), t = suma(gs);
-  document.getElementById('cintaTxt').innerHTML =
-    `${nombreMes(0)} · <b class="num">${eur(t)}</b>`;
+  document.getElementById('cintaTxt').innerHTML = `${nombreMes(0)} · <b class="num">${eur(t)}</b>`;
   const barra = document.getElementById('presuBarra');
   if(presupuesto > 0){
     barra.hidden = false;
-    const pct = Math.min(t / presupuesto, 1) * 100;
     const i = barra.firstElementChild;
-    i.style.width = pct + '%';
+    i.style.width = Math.min(t / presupuesto, 1) * 100 + '%';
     i.classList.toggle('pasado', t > presupuesto);
     const queda = presupuesto - t;
     document.getElementById('cintaDer').textContent =
@@ -323,16 +424,34 @@ function pintarCinta(){
   }
 }
 
-/* Nota plegable */
-const notabar = document.getElementById('notabar');
-function notaCerrada(){ notabar.innerHTML = '<button id="verNota">Añadir nota</button>' }
-function notaAbierta(valor=''){
-  notabar.innerHTML = `<input id="nota" placeholder="Nota" maxlength="60" autocomplete="off">`;
-  const i = document.getElementById('nota'); i.value = valor; i.focus();
+/* Chips de nota y fecha */
+const extras = document.getElementById('extras');
+const paraInput = ms => { const d = new Date(ms - d0(ms)); return d.toISOString().slice(0,16) };
+const d0 = ms => new Date(ms).getTimezoneOffset() * 60000;
+function pintarExtras(){
+  const f = fechaSel
+    ? new Date(fechaSel).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})
+    : 'Ahora';
+  extras.innerHTML =
+    (nota !== null && nota !== undefined && extras.dataset.nota === 'abierta'
+      ? `<input type="text" id="inNota" maxlength="60" placeholder="Nota" value="${escapar(nota)}">`
+      : `<button data-x="nota" class="${nota ? 'puesto' : ''}">${nota ? '✎ ' + escapar(nota) : 'Nota'}</button>`) +
+    (extras.dataset.fecha === 'abierta'
+      ? `<input type="datetime-local" id="inFecha" value="${paraInput(fechaSel || Date.now())}">`
+      : `<button data-x="fecha" class="${fechaSel ? 'puesto' : ''}">${f}</button>`);
+  const iN = document.getElementById('inNota');
+  if(iN){ iN.oninput = e => nota = e.target.value;
+          iN.onblur = () => { extras.dataset.nota = ''; pintarExtras() }; iN.focus() }
+  const iF = document.getElementById('inFecha');
+  if(iF){ iF.onchange = e => { const v = e.target.value;
+            fechaSel = v ? new Date(v).getTime() : null; };
+          iF.onblur = () => { extras.dataset.fecha = ''; pintarExtras() }; iF.focus() }
 }
-notaCerrada();
-notabar.addEventListener('click', e => { if(e.target.id === 'verNota') notaAbierta() });
-const leerNota = () => (document.getElementById('nota')?.value || '').trim();
+extras.addEventListener('click', e => {
+  const b = e.target.closest('button[data-x]'); if(!b) return;
+  extras.dataset[b.dataset.x] = 'abierta';
+  pintarExtras();
+});
 
 document.getElementById('cats').addEventListener('click', e => {
   const b = e.target.closest('.cat'); if(!b) return;
@@ -350,50 +469,48 @@ document.getElementById('teclas').addEventListener('click', e => {
 });
 
 function limpiar(){
-  buffer = ''; editando = null; catSel = 'comida';
+  buffer = ''; editando = null; catSel = 'comida'; fechaSel = null; nota = '';
+  extras.dataset.nota = ''; extras.dataset.fecha = '';
   document.getElementById('avisoEdicion').innerHTML = '';
-  notaCerrada(); refrescar(); marcarCat(); pintarCinta();
+  refrescar(); marcarCat(); pintarExtras(); pintarCinta();
 }
 function editar(id){
   const g = gastos.find(x => x.id === id); if(!g) return;
   editando = id;
   buffer = g.c.toFixed(2).replace('.', ',').replace(/,00$/, '');
-  catSel = g.cat;
-  g.n ? notaAbierta(g.n) : notaCerrada();
+  catSel = g.cat; nota = g.n || ''; fechaSel = g.t;
+  extras.dataset.nota = ''; extras.dataset.fecha = '';
   document.getElementById('avisoEdicion').innerHTML =
-    `<div class="editando"><span>Editando un gasto del ${new Date(g.t)
-      .toLocaleDateString('es-ES',{day:'numeric',month:'short'})}</span>
+    `<div class="editando"><span>Editando un gasto</span>
      <button id="cancelarEd" style="padding:6px 12px">Cancelar</button></div>`;
   document.getElementById('cancelarEd').onclick = limpiar;
-  refrescar(); marcarCat(); ir('anadir');
+  refrescar(); marcarCat(); pintarExtras(); ir('anadir');
 }
 document.getElementById('guardar').onclick = () => {
   const c = valor(); if(c <= 0) return;
   if(editando){
     const g = gastos.find(x => x.id === editando);
-    if(g){ g.c = c; g.cat = catSel; g.n = leerNota() }
+    if(g){ g.c = c; g.cat = catSel; g.n = nota.trim(); g.t = fechaSel || g.t; g.pend = true }
     avisar('Gasto actualizado');
   } else {
     gastos.push({
       id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
-      c, cat: catSel, n: leerNota(), t: Date.now()
+      c, cat: catSel, n: nota.trim(), t: fechaSel || Date.now(), pend: true
     });
     avisar('Guardado ' + eur(c));
   }
-  salvar(); limpiar();
+  salvar(); limpiar(); sincronizar();
 };
 
 /* ============ 2. Gastos ============ */
 let filtro = null;
 
 function navMes(destino, onCambio){
-  const hayFuturo = offMes < 0;
   const primero = gastos.length ? Math.min(...gastos.map(g => g.t)) : Date.now();
-  const hayPasado = inicioMes(offMes).getTime() > primero;
   destino.innerHTML =
-    `<button data-d="-1" ${hayPasado ? '' : 'disabled'} aria-label="Mes anterior">‹</button>
+    `<button data-d="-1" ${inicioMes(offMes).getTime() > primero ? '' : 'disabled'} aria-label="Anterior">‹</button>
      <b>${nombreMes(offMes)}</b>
-     <button data-d="1" ${hayFuturo ? '' : 'disabled'} aria-label="Mes siguiente">›</button>`;
+     <button data-d="1" ${offMes < 0 ? '' : 'disabled'} aria-label="Siguiente">›</button>`;
   destino.onclick = e => {
     const b = e.target.closest('button[data-d]'); if(!b || b.disabled) return;
     offMes += parseInt(b.dataset.d); onCambio();
@@ -437,6 +554,7 @@ function pintarLista(){
           <div class="txt"><b>${g.n ? escapar(g.n) : c.nom}</b>
             <small>${g.n ? c.nom + ' · ' : ''}${new Date(g.t)
               .toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</small></div>
+          ${g.pend && nube ? '<div class="subir" title="Sin subir"></div>' : ''}
           <div class="imp num">${eur(g.c)}</div>
           <button class="borrar" data-borrar="${g.id}" aria-label="Borrar">✕</button>
         </li>`;
@@ -451,8 +569,11 @@ document.getElementById('filtros').addEventListener('click', e => {
 document.getElementById('listaCuerpo').addEventListener('click', e => {
   const del = e.target.closest('[data-borrar]');
   if(del){
-    gastos = gastos.filter(g => g.id !== del.dataset.borrar);
-    salvar(); pintarLista(); avisar('Gasto borrado');
+    const id = del.dataset.borrar;
+    const g = gastos.find(x => x.id === id);
+    gastos = gastos.filter(x => x.id !== id);
+    if(nube && g && !g.pend) colaBorrados.push(id);   // si nunca subió, no hace falta lápida
+    salvar(); pintarLista(); avisar('Gasto borrado'); sincronizar();
     return;
   }
   const fila = e.target.closest('li[data-id]');
@@ -470,19 +591,13 @@ function pintarMetricas(){
       Registra algún gasto y aquí verás en qué se te va.</p>`;
     return;
   }
-
   const prev = suma(delMes(offMes - 1));
   const delta = prev > 0 ? ((total - prev) / prev) * 100 : null;
-
-  /* Días transcurridos del mes (el mes en curso se calcula a día de hoy) */
-  const ahora = new Date();
   const enCurso = offMes === 0;
   const diasMes = finMes(offMes).getDate();
-  const diasPasados = enCurso ? ahora.getDate() : diasMes;
+  const diasPasados = enCurso ? new Date().getDate() : diasMes;
   const media = total / diasPasados;
-  const proyeccion = media * diasMes;
 
-  /* Día más caro */
   const porDia = {};
   gs.forEach(g => { const k = new Date(g.t).toDateString(); porDia[k] = (porDia[k] || 0) + g.c });
   const [diaTop, impTop] = Object.entries(porDia).sort((a,b) => b[1] - a[1])[0];
@@ -510,7 +625,7 @@ function pintarMetricas(){
       <div class="mini"><b class="num">${gs.length}</b><small>gastos registrados</small></div>
       <div class="mini"><b class="num">${eur0(impTop)}</b><small>el ${new Date(diaTop)
         .toLocaleDateString('es-ES',{day:'numeric',month:'short'})}, el día más caro</small></div>
-      <div class="mini"><b class="num">${enCurso ? eur0(proyeccion) : eur0(suma(gs)/gs.length)}</b>
+      <div class="mini"><b class="num">${enCurso ? eur0(media*diasMes) : eur0(total/gs.length)}</b>
         <small>${enCurso ? 'proyección a fin de mes' : 'gasto medio'}</small></div>
     </div>
 
@@ -518,8 +633,7 @@ function pintarMetricas(){
       <div style="font-size:15px;color:var(--muted)">En qué se te va</div>
       ${porCat.map(c => `
         <div class="filaCat">
-          <span>${c.emo} ${c.nom}</span>
-          <span class="num">${eur(c.s)}</span>
+          <span>${c.emo} ${c.nom}</span><span class="num">${eur(c.s)}</span>
           <div class="pista"><i style="width:${(c.s/total)*100}%;background:${color(c.id)}"></i></div>
           <span class="pct num">${((c.s/total)*100).toFixed(0)}%</span>
         </div>`).join('')}
@@ -537,17 +651,16 @@ function grafMeses(){
     const off = offMes - i;
     datos.push({
       etq: inicioMes(off).toLocaleDateString('es-ES',{month:'short'}).replace('.',''),
-      v: suma(delMes(off)),
-      activo: i === 0
+      v: suma(delMes(off)), activo: i === 0
     });
   }
   const max = Math.max(...datos.map(d => d.v), 1);
   const an = 100 / datos.length, ancho = an * 0.52, alto = 100;
   return `<svg class="graf" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
     ${datos.map((d,i) => {
-      const h = (d.v / max) * alto, x = i*an + (an-ancho)/2;
-      return `<rect x="${x}" y="${alto-h}" width="${ancho}" height="${Math.max(h,1.2)}"
-        fill="${d.activo ? 'var(--ink)' : 'var(--hueco)'}"/>`;
+      const h = (d.v / max) * alto;
+      return `<rect x="${i*an + (an-ancho)/2}" y="${alto-h}" width="${ancho}"
+        height="${Math.max(h,1.2)}" fill="${d.activo ? 'var(--ink)' : 'var(--hueco)'}"/>`;
     }).join('')}
   </svg>
   <div style="display:flex;margin-top:8px">
@@ -562,14 +675,50 @@ function pintarAjustes(){
   document.getElementById('cuenta').textContent =
     gastos.length + ' gasto' + (gastos.length === 1 ? '' : 's');
   document.getElementById('presupuesto').value = presupuesto || '';
+  document.getElementById('cfgUrl').value = nube?.url || '';
+  document.getElementById('cfgClave').value = nube?.clave || '';
   document.getElementById('version').textContent =
-    'Gastos v2 · ' + (window.matchMedia('(display-mode: standalone)').matches
+    'Gastos v3 · ' + (window.matchMedia('(display-mode: standalone)').matches
       ? 'abierta desde el icono' : 'abierta en el navegador');
+  marcarPendientes();
+  pintarEstado();
 }
+
+document.getElementById('cfgProbar').onclick = async () => {
+  const url = document.getElementById('cfgUrl').value.trim().replace(/\/+$/,'');
+  const clave = document.getElementById('cfgClave').value.trim();
+  if(!/^https:\/\//.test(url)) return avisar('La dirección debe empezar por https://');
+  if(!clave) return avisar('Falta la clave');
+  const previa = nube;
+  nube = { url, clave };
+  try {
+    await llamar('/gastos');
+    localStorage.setItem(K.cfg, JSON.stringify(nube));
+    gastos.forEach(g => g.pend = true);       // primera subida: todo lo local va arriba
+    salvar();
+    avisar('Conectado. Subiendo lo que tenías…');
+    await sincronizar({ ruidoso:true });
+  } catch(e){
+    nube = previa;
+    avisar(e.message === 'clave' ? 'La clave no es correcta'
+         : e.message.startsWith('http') ? 'El servidor respondió ' + e.message.slice(5)
+         : 'No se pudo conectar con esa dirección');
+  }
+  pintarAjustes();
+};
+document.getElementById('cfgAhora').onclick = () =>
+  nube ? sincronizar({ ruidoso:true }) : avisar('Configura primero la dirección y la clave');
+document.getElementById('cfgQuitar').onclick = () => {
+  if(!nube) return;
+  if(!confirm('Este dispositivo dejará de sincronizar. Los gastos que ya tienes aquí se conservan.')) return;
+  nube = null; localStorage.removeItem(K.cfg);
+  gastos.forEach(g => delete g.pend); colaBorrados = [];
+  salvar(); pintarAjustes(); avisar('Desconectado');
+};
+
 document.getElementById('presupuesto').addEventListener('change', e => {
   presupuesto = Math.max(0, parseFloat(e.target.value) || 0);
-  presupuesto ? localStorage.setItem(CLAVE_PRESU, presupuesto)
-              : localStorage.removeItem(CLAVE_PRESU);
+  presupuesto ? localStorage.setItem(K.presu, presupuesto) : localStorage.removeItem(K.presu);
   pintarCinta();
   avisar(presupuesto ? 'Presupuesto: ' + eur0(presupuesto) : 'Presupuesto desactivado');
 });
@@ -581,7 +730,7 @@ const bajar = (txt, nombre, tipo) => {
 };
 document.getElementById('csv').onclick = () => {
   if(!gastos.length) return avisar('No hay nada que exportar');
-  bajar('fecha;hora;importe;categoria;nota\n' + [...gastos].sort((a,b) => a.t - b.t).map(g => {
+  bajar('\ufefffecha;hora;importe;categoria;nota\n' + [...gastos].sort((a,b) => a.t - b.t).map(g => {
     const d = new Date(g.t);
     return [d.toLocaleDateString('es-ES'), d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}),
             g.c.toFixed(2).replace('.',','), cat(g.cat).nom,
@@ -590,7 +739,8 @@ document.getElementById('csv').onclick = () => {
 };
 document.getElementById('exportar').onclick = () => {
   if(!gastos.length) return avisar('No hay nada que exportar');
-  bajar(JSON.stringify(gastos), `gastos-${new Date().toISOString().slice(0,10)}.json`, 'application/json');
+  bajar(JSON.stringify(gastos.map(limpio)),
+        `gastos-${new Date().toISOString().slice(0,10)}.json`, 'application/json');
 };
 document.getElementById('importar').onclick = () => document.getElementById('fichero').click();
 document.getElementById('fichero').onchange = async e => {
@@ -599,26 +749,36 @@ document.getElementById('fichero').onchange = async e => {
     const datos = JSON.parse(await f.text());
     if(!Array.isArray(datos)) throw 0;
     const vistos = new Set(gastos.map(g => g.id));
-    const nuevos = datos.filter(g => g && g.id && typeof g.c === 'number' && !vistos.has(g.id));
+    const nuevos = datos.filter(g => g && g.id && typeof g.c === 'number' && !vistos.has(g.id))
+                        .map(g => ({ ...limpio(g), pend: !!nube }));
     gastos = gastos.concat(nuevos);
-    salvar(); pintarAjustes();
+    salvar(); repintar();
     avisar(nuevos.length ? `Añadidos ${nuevos.length} gastos` : 'Ya los tenías todos');
+    if(nuevos.length) sincronizar();
   } catch { avisar('Ese archivo no es una copia válida') }
   e.target.value = '';
 };
 document.getElementById('borrarTodo').onclick = () => {
   if(!gastos.length) return avisar('Ya está vacío');
-  if(!confirm(`Se borrarán ${gastos.length} gastos de este dispositivo. No se puede deshacer.`)) return;
-  gastos = []; salvar(); limpiar(); pintarAjustes();
+  if(!confirm(`Se borrarán ${gastos.length} gastos${nube ? ', aquí y en la nube' : ''}. No se puede deshacer.`)) return;
+  if(nube) colaBorrados.push(...gastos.map(g => g.id));
+  gastos = []; salvar(); limpiar(); repintar(); sincronizar();
   avisar('Todo borrado');
 };
 
 /* ============ Arranque ============ */
-refrescar(); marcarCat(); pintarCinta();
+refrescar(); marcarCat(); pintarExtras(); pintarCinta(); marcarPendientes();
+
 const p = new URLSearchParams(location.search);
 if(p.has('cat') && CATS.some(c => c.id === p.get('cat'))){ catSel = p.get('cat'); marcarCat() }
 if(p.get('ver') && vistas.includes(p.get('ver'))) ir(p.get('ver'));
 history.replaceState(null, '', location.pathname);
+
+sincronizar();
+window.addEventListener('online', () => sincronizar());
+document.addEventListener('visibilitychange', () => {
+  if(!document.hidden && Date.now() - ultimaSync > 20000) sincronizar();
+});
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>

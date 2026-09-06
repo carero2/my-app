@@ -1,4 +1,4 @@
-const CACHE = 'gastos-v2';
+const CACHE = 'gastos-v3';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png'];
 
 self.addEventListener('install', e => {
