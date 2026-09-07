@@ -1,5 +1,4 @@
-# Vida
-
+# My-app
 App personal por módulos: finanzas y hábitos. Web app que se instala en la pantalla
 de inicio del iPhone, funciona sin conexión y sincroniza con un Worker propio.
 
