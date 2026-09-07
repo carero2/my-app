@@ -25,9 +25,9 @@ input,select,textarea{font:inherit;color:inherit}
 /* ---------- Armazón ---------- */
 .vistas{flex:1;position:relative;overflow:hidden}
 .vista{position:absolute;inset:0;display:none;flex-direction:column;overflow-y:auto;
-  -webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+  overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .vista.on{display:flex}
-.scroll{padding:0 20px 28px;max-width:620px;width:100%;margin:0 auto}
+.scroll{padding:0 20px 28px;max-width:620px;width:100%;margin:0 auto;min-width:0}
 .compacto{padding:0 16px 16px;max-width:620px;width:100%;margin:0 auto}
 
 .tabs{display:flex;border-top:1px solid var(--line);background:var(--paper);
@@ -47,11 +47,24 @@ input,select,textarea{font:inherit;color:inherit}
 .etiqueta{font-size:13px;color:var(--muted);padding:22px 4px 0}
 
 /* Selector de submódulos */
-.segmentos{display:flex;gap:6px;overflow-x:auto;padding:12px 0 4px;scrollbar-width:none}
+.segmentos{display:flex;gap:6px;overflow-x:auto;padding:12px 0 4px;scrollbar-width:none;
+  min-width:0;max-width:100%}
 .segmentos::-webkit-scrollbar{display:none}
-.seg{flex:none;padding:7px 15px;border-radius:99px;font-size:15px;color:var(--muted);
-  background:var(--card);border:1px solid var(--line)}
+.segmentos.envuelve{flex-wrap:wrap;overflow:visible}
+.seg{flex:none;padding:7px 14px;border-radius:99px;font-size:15px;color:var(--muted);
+  background:var(--card);border:1px solid var(--line);display:inline-flex;align-items:center;gap:7px}
 .seg[aria-pressed=true]{background:var(--ink);color:var(--paper);border-color:transparent}
+.seg .pinta{width:8px;height:8px;border-radius:99px;flex:none}
+.seg[aria-pressed=true] .pinta{display:none}
+
+/* Acciones: se distinguen de las categorías por forma y por estar en su propia fila */
+.acciones{display:flex;gap:8px;flex-wrap:wrap;padding:10px 0 2px;
+  border-top:1px solid var(--line);margin-top:10px}
+.accion{padding:7px 14px;border-radius:10px;font-size:14px;color:var(--muted);
+  background:var(--hueco)}
+.accion.on{background:var(--ink);color:var(--paper)}
+.accion.nuevo{margin-left:auto;color:var(--ink);font-weight:600;
+  background:none;border:1px dashed var(--line)}
 
 /* ---------- Piezas comunes ---------- */
 .panel{background:var(--card);border-radius:18px;padding:18px;margin-top:12px}
@@ -165,6 +178,11 @@ svg.graf{width:100%;height:110px;overflow:visible;margin-top:10px;display:block}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tira i{display:block;height:22px;border-radius:6px;background:var(--hueco);margin-bottom:3px}
 .tira i.futuro{background:transparent;border:1px dashed var(--line)}
+.tira i.apagado{background:transparent;box-shadow:inset 0 0 0 1px var(--line);opacity:.5}
+.tira div{cursor:pointer}
+.hab.descanso{opacity:.62}
+.hoyNo{font-size:13px;color:var(--muted);flex:none;padding:0 4px}
+.opciones.dias button{min-width:42px;text-align:center;padding:9px 0}
 .hab.hecho .hab-nom b{opacity:.55}
 .hab.hecho{background:linear-gradient(var(--card),var(--card))}
 .racha{font-size:13px;color:var(--muted);margin-top:9px}

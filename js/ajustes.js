@@ -53,7 +53,7 @@ export function pintar(vista) {
 
     <p class="pieNota">Con la sincronización activa tus datos viven en tu Worker y este dispositivo
       guarda una copia para funcionar sin cobertura. Sin ella, existen solo aquí.</p>
-    <p class="pieNota">Vida v5 · ${window.matchMedia('(display-mode: standalone)').matches
+    <p class="pieNota">My-app v6 · ${window.matchMedia('(display-mode: standalone)').matches
       ? 'abierta desde el icono' : 'abierta en el navegador'}</p>
     <input type="file" id="ficheroJSON" accept="application/json" hidden>
   </div>`;
@@ -112,7 +112,7 @@ export function pintar(vista) {
     const copia = {};
     for (const c of COLECCIONES) copia[c] = datos[c].map(x => { const y = {...x}; delete y.pend; return y });
     bajar(JSON.stringify({ version: 4, fecha: Date.now(), ...copia }),
-      `vida-${dia()}.json`, 'application/json');
+      `my-app-${dia()}.json`, 'application/json');
   };
   $('#impJSON').onclick = () => $('#ficheroJSON').click();
   $('#ficheroJSON').onchange = async e => {

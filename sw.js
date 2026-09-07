@@ -1,4 +1,4 @@
-const CACHE = 'vida-v5';
+const CACHE = 'myapp-v6';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './css/estilo.css',

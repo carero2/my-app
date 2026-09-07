@@ -11,8 +11,9 @@ export function pintar(vista, ir) {
     .filter(g => dia(g.t) === dia() && g.tipo !== 'ingreso')
     .reduce((s, g) => s + g.c, 0);
   const mes = fin.gastado(0), presu = fin.presupuesto();
-  const lista = hab.activos();
-  const hechos = lista.filter(h => hab.cumplido(h)).length;
+  const lista = hab.activos().filter(h => hab.toca(h));
+  const delDia = lista.filter(hab.cuentaHoy);
+  const hechos = delDia.filter(h => hab.cumplido(h)).length;
 
   vista.innerHTML = `<div class="scroll">
     <div class="saludo">${saludo(hoy)}</div>
@@ -35,7 +36,7 @@ export function pintar(vista, ir) {
         : '<div class="delta">Sin presupuesto definido</div>'}
     </div>
 
-    <div class="etiqueta">Hábitos${lista.length ? ` · ${hechos} de ${lista.length} cumplidos` : ''}</div>
+    <div class="etiqueta">Hábitos${delDia.length ? ` · ${hechos} de ${delDia.length} hoy` : ''}</div>
     <div id="habHoy"></div>
   </div>`;
 
