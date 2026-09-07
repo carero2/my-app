@@ -53,7 +53,7 @@ export function pintar(vista) {
 
     <p class="pieNota">Con la sincronización activa tus datos viven en tu Worker y este dispositivo
       guarda una copia para funcionar sin cobertura. Sin ella, existen solo aquí.</p>
-    <p class="pieNota">My-app v6 · ${window.matchMedia('(display-mode: standalone)').matches
+    <p class="pieNota">My-app v7 · ${window.matchMedia('(display-mode: standalone)').matches
       ? 'abierta desde el icono' : 'abierta en el navegador'}</p>
     <input type="file" id="ficheroJSON" accept="application/json" hidden>
   </div>`;

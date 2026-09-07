@@ -87,25 +87,6 @@ export function racha(h) {
   }
   return n;
 }
-export function mejorRacha(h) {
-  const frec = frecDe(h);
-  const hechos = new Set(datos.registros.filter(r => r.hab === h.id)
-    .filter(r => h.tipo === 'sino' ? r.v >= 1 : r.v >= (h.objetivo || 1)).map(r => r.d));
-  if (!hechos.size) return 0;
-  const anterior = p => { let q = periodoAtras(frec, p, 1), t = 0;
-    while (!toca(h, q) && t++ < 400) q = periodoAtras(frec, q, 1); return q };
-  const siguiente = p => { let q = periodoAtras(frec, p, -1), t = 0;
-    while (!toca(h, q) && t++ < 400) q = periodoAtras(frec, q, -1); return q };
-  let mejor = 0;
-  for (const p of hechos) {
-    if (hechos.has(siguiente(p))) continue;         // no es el final de una serie
-    let n = 0, q = p, t = 0;
-    while (hechos.has(q) && t++ < 400) { n++; q = anterior(q) }
-    mejor = Math.max(mejor, n);
-  }
-  return mejor;
-}
-
 export function fijarValor(h, v, p = clave(h)) {
   const val = Math.max(0, Math.round(v * 100) / 100);
   const existente = registro(h, p);
@@ -206,6 +187,8 @@ export function tarjeta(h) {
   const r = racha(h);
   const unidades = frec === 'dia' ? ['día','días'] : frec === 'semana'
     ? ['semana','semanas'] : ['mes','meses'];
+  /* En un día libre la tarjeta se atenúa, pero el control sigue activo:
+     una sesión fuera de plan debe poder registrarse. */
   const sub = [
     frec === 'dia' ? diasTexto(h) : FRECS[frec].corto,
     obj ? 'objetivo ' + (h.tipo === 'crono' ? obj + ' min' : obj + ' ' + (h.unidad || '')) : '',
@@ -219,7 +202,8 @@ export function tarjeta(h) {
         <b>${escapar(h.nombre)}</b>
         ${sub ? `<small>${escapar(sub)}</small>` : ''}
       </div>
-      ${hoyToca ? control : '<span class="hoyNo">hoy no toca</span>'}
+      ${hoyToca ? '' : '<span class="hoyNo">libre</span>'}
+      ${control}
     </div>
     ${h.tipo !== 'sino' || obj ? `<div class="barra"><i data-progreso="${h.id}"
       style="width:${pct}%;background:${col}"></i></div>` : ''}
@@ -242,10 +226,12 @@ function tira(h, col) {
     const v = valorDe(h, p);
     return h.tipo === 'sino' ? (v >= 1 ? 1 : 0) : Math.min(v / (h.objetivo || 1), 1);
   };
+  const ahora = periodo(frec, Date.now());
   const celda = (p, etq, futuro) => {
     const off = !futuro && !toca(h, p);
-    const pct = futuro || off ? 0 : relleno(p);
-    return `<div data-p="${p}" data-h="${h.id}"><i class="${futuro ? 'futuro' : ''} ${off ? 'apagado' : ''}"
+    const pct = futuro ? 0 : relleno(p);
+    return `<div data-p="${p}" data-h="${h.id}" class="${p === ahora ? 'ahora' : ''}">
+      <i class="${futuro ? 'futuro' : ''} ${off && !pct ? 'apagado' : ''}"
       style="${pct ? `background:${col};opacity:${0.3 + pct * 0.7}` : ''}"></i>${etq}</div>`;
   };
 
@@ -372,57 +358,139 @@ export function anillo(lista) {
   </div>`;
 }
 
-/* ---------- Resumen ---------- */
-function pintarResumen(c) {
-  const lista = activos();
-  if (!lista.length) { c.innerHTML = '<p class="vacio">Nada que resumir todavía.</p>'; return }
+/* ---------- Resumen ----------
+   Tres ventanas naturales en vez de "últimos N periodos": la semana en curso
+   (lunes a domingo), el mes (día 1 a fin de mes) y el año. */
+let resSeg = 'semana';
 
-  const filas = lista.map(h => {
-    const frec = frecDe(h);
-    const n = frec === 'dia' ? 30 : frec === 'semana' ? 12 : 6;
-    const actual = periodo(frec, Date.now());
-    let hechos = 0, aplican = 0, suma = 0;
-    for (let i = 0; i < n; i++) {
-      const p = periodoAtras(frec, actual, i);
-      if (!toca(h, p)) continue;
-      aplican++;
-      suma += valorDe(h, p);
-      if (cumplido(h, p)) hechos++;
+const RANGOS = {
+  semana: { nom:'Semana', etq:'esta semana',
+            ini: () => lunes(),
+            fin: () => { const d = lunes(); d.setDate(d.getDate() + 6); return d } },
+  mes:    { nom:'Mes', etq:'este mes',
+            ini: () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) },
+            fin: () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth()+1, 0) } },
+  ano:    { nom:'Año', etq:'este año',
+            ini: () => new Date(new Date().getFullYear(), 0, 1),
+            fin: () => new Date(new Date().getFullYear(), 11, 31) },
+};
+const aMs = (d, fin) => { d.setHours(fin ? 23 : 0, fin ? 59 : 0, fin ? 59 : 0, 0); return d.getTime() };
+
+/** Periodos del hábito dentro del rango que ya han empezado.
+ *  Nunca cuenta periodos anteriores a la creación del hábito: uno creado
+ *  anteayer no debe salir al 7% por compararlo con el mes entero. */
+function periodosEn(h, iniMs, finMs) {
+  const frec = frecDe(h);
+  const hasta = Math.min(finMs, Date.now());
+  if (hasta < iniMs) return [];
+  const nacimiento = periodo(frec, h.t || 0);
+  const out = [];
+  let p, tope;
+  if (frec === 'dia')         { p = dia(iniMs); tope = dia(hasta) }
+  else if (frec === 'semana') { p = 's' + dia(lunes(iniMs).getTime());
+                                tope = 's' + dia(lunes(hasta).getTime()) }
+  else                        { p = 'm' + dia(iniMs).slice(0,7); tope = 'm' + dia(hasta).slice(0,7) }
+  let guarda = 0;
+  while (p <= tope && guarda++ < 500) {
+    if (p >= nacimiento) out.push(p);
+    p = periodoAtras(frec, p, -1);
+  }
+  return out;
+}
+
+const horas = m => m >= 60
+  ? (m / 60).toFixed(m % 60 >= 6 ? 1 : 0).replace('.', ',') + ' h'
+  : Math.round(m) + ' min';
+const acumulado = (h, suma) => h.tipo === 'crono'
+  ? horas(suma)
+  : redondo(Math.round(suma * 10) / 10) + (h.unidad ? ' ' + h.unidad : '');
+
+export function calcularResumen(rango) {
+  const R = RANGOS[rango];
+  const iniMs = aMs(R.ini(), false), finMs = aMs(R.fin(), true);
+  const filas = activos().map(h => {
+    let debidos = 0, hechos = 0, extras = 0, suma = 0;
+    for (const p of periodosEn(h, iniMs, finMs)) {
+      const v = valorDe(h, p);
+      suma += v;
+      const ok = cumplido(h, p);
+      if (toca(h, p)) { debidos++; if (ok) hechos++ }
+      else if (v > 0) extras++;
     }
-    return { h, frec, aplican, hechos, suma,
-             pct: aplican ? Math.round((hechos / aplican) * 100) : 0,
-             racha: racha(h), mejor: mejorRacha(h) };
-  });
+    return { h, debidos, hechos, extras, suma,
+             pct: debidos ? Math.round((hechos / debidos) * 100) : null };
+  }).filter(f => f.debidos || f.extras || f.suma);
+
+  const deb = filas.reduce((s,f) => s + f.debidos, 0);
+  const hec = filas.reduce((s,f) => s + f.hechos, 0);
+  return { filas, deb, hec,
+           extras: filas.reduce((s,f) => s + f.extras, 0),
+           pct: deb ? Math.round((hec / deb) * 100) : null,
+           completos: filas.filter(f => f.pct === 100).length };
+}
+
+function pintarResumen(c) {
+  if (!activos().length) { c.innerHTML = '<p class="vacio">Nada que resumir todavía.</p>'; return }
+  const r = calcularResumen(resSeg);
+  const R = RANGOS[resSeg];
+  const rotulo = resSeg === 'ano'
+    ? String(new Date().getFullYear())
+    : `${R.ini().toLocaleDateString('es-ES',{day:'numeric',month:'short'})} – ` +
+      `${R.fin().toLocaleDateString('es-ES',{day:'numeric',month:'short'})}`;
+
+  const logros = r.filas.filter(f => f.h.tipo !== 'sino' && f.suma > 0)
+    .sort((a,b) => b.suma - a.suma);
 
   c.innerHTML = `
-    <div class="rejilla">
-      <div class="mini"><b class="num">${lista.filter(h => cuentaHoy(h) && cumplido(h)).length}/${
-        lista.filter(cuentaHoy).length}</b><small>cumplidos hoy</small></div>
-      <div class="mini"><b class="num">${Math.round(
-        filas.reduce((s,f) => s + f.pct, 0) / filas.length)}%</b><small>constancia media</small></div>
-      <div class="mini"><b class="num">${Math.max(...filas.map(f => f.mejor), 0)}</b>
-        <small>racha más larga</small></div>
-      <div class="mini"><b class="num">${filas.filter(f => f.racha > 0).length}</b>
-        <small>hábitos en racha</small></div>
+    <div class="opciones" id="resSegs" style="margin-top:4px">
+      ${Object.entries(RANGOS).map(([id,x]) =>
+        `<button data-r="${id}" aria-pressed="${resSeg===id}">${x.nom}</button>`).join('')}
     </div>
 
-    ${filas.map(f => {
+    <div class="panel">
+      <div class="subtitulo" style="padding:0 0 6px">${rotulo}</div>
+      <div class="granCifra num">${r.pct === null ? '—' : r.pct + '%'}</div>
+      <div class="delta">${r.deb
+        ? `${r.hec} de ${r.deb} cumplidos de lo que tocaba ${R.etq}`
+        : 'Todavía no tocaba nada en este periodo'}</div>
+      ${r.deb ? `<div class="barra" style="margin-top:12px">
+        <i style="width:${r.pct}%"></i></div>` : ''}
+    </div>
+
+    <div class="rejilla">
+      <div class="mini"><b class="num">${r.hec}</b><small>cumplidos</small></div>
+      <div class="mini"><b class="num">${Math.max(0, r.deb - r.hec)}</b>
+        <small>${r.deb - r.hec === 1 ? 'te queda' : 'te quedan'} por cumplir</small></div>
+      <div class="mini"><b class="num">${r.completos}</b><small>hábitos al 100%</small></div>
+      <div class="mini"><b class="num">${r.extras ? '+' + r.extras : '0'}</b>
+        <small>sesiones fuera de plan</small></div>
+    </div>
+
+    ${logros.length ? `<div class="etiqueta">Acumulado ${R.etq}</div>
+      ${logros.map(f => `<div class="logro" style="border-left-color:${colorDe(f.h)}">
+        <span class="logroEmo">${f.h.emo || '•'}</span>
+        <span>${escapar(f.h.nombre)}</span>
+        <b class="num">${escapar(acumulado(f.h, f.suma))}</b></div>`).join('')}` : ''}
+
+    <div class="etiqueta">Por hábito</div>
+    ${r.filas.length ? r.filas.slice().sort((a,b) => (b.pct ?? -1) - (a.pct ?? -1)).map(f => {
       const col = colorDe(f.h);
-      const unidad = f.h.tipo === 'crono' ? 'min' : (f.h.unidad || '');
-      const nom = f.frec === 'dia' ? 'días' : f.frec === 'semana' ? 'semanas' : 'meses';
-      return `<div class="panel" style="padding:15px">
-        <div class="hab-cab" style="margin-bottom:10px">
+      return `<div class="panel" style="padding:14px 15px">
+        <div class="hab-cab" style="margin-bottom:9px">
           <div class="punto" style="background:${col}22;color:${col}">${f.h.emo || '•'}</div>
           <div class="hab-nom"><b>${escapar(f.h.nombre)}</b>
-            <small>últim${nom === 'días' ? 'os' : 'as'} ${f.aplican} ${nom} que tocaban</small></div>
-          <div class="imp num">${f.pct}%</div>
+            <small>${f.debidos ? `${f.hechos} de ${f.debidos}` : 'sin periodos que cumplir'}${
+              f.extras ? ` · +${f.extras} extra` : ''}</small></div>
+          <div class="imp num">${f.pct === null ? '—' : f.pct + '%'}</div>
         </div>
-        <div class="barra"><i style="width:${f.pct}%;background:${col}"></i></div>
-        <div class="racha">${f.hechos} de ${f.aplican} cumplidos${
-          f.h.tipo !== 'sino' && f.suma ? ` · ${redondo(Math.round(f.suma))} ${escapar(unidad)} en total` : ''
-        }${f.mejor ? ` · mejor racha ${f.mejor}` : ''}</div>
+        <div class="barra"><i style="width:${f.pct ?? 0}%;background:${col}"></i></div>
       </div>`;
-    }).join('')}`;
+    }).join('') : '<p class="vacio">Nada registrado en este periodo.</p>'}`;
+
+  c.querySelector('#resSegs').onclick = e => {
+    const b = e.target.closest('[data-r]'); if (!b) return;
+    resSeg = b.dataset.r; pintarResumen(c);
+  };
 }
 
 function pintarArchivados(c) {

@@ -14,6 +14,7 @@ export const CATS = [
   {id:'ocio',       nom:'Ocio',       emo:'🍺'},
   {id:'hogar',      nom:'Hogar',      emo:'🏠'},
   {id:'salud',      nom:'Gimnasio',   emo:'🏋'},
+  {id:'viajes',     nom:'Viajes',     emo:'✈️'},
   {id:'otros',      nom:'Otros',      emo:'📦'},
 ];
 export const cat = id => CATS.find(c => c.id === id) || CATS.at(-1);
@@ -435,5 +436,6 @@ const REGLAS = [
   [/cine|netflix|spotify|hbo|disney|steam|teatro|concierto|museo|discoteca|pub/i, 'ocio'],
   [/alquiler|hipoteca|luz|endesa|iberdrola|naturgy|agua|gas |internet|movistar|vodafone|orange|comunidad/i, 'hogar'],
   [/gimnasio|gym|basic ?fit|fitness|crossfit|padel|pádel|piscina|fisio|farmacia|clinic|dentist|medic/i, 'salud'],
+  [/booking|airbnb|hotel|hostal|ryanair|vueling|iberia|easyjet|aerolin|aeropuerto|vuelo|renfe ave|equipaje|maleta/i, 'viajes'],
 ];
 const adivinarCat = txt => REGLAS.find(([re]) => re.test(txt))?.[1] || 'otros';

@@ -1,7 +1,7 @@
 :root{
   --paper:#F5F4F0; --ink:#1C1B19; --muted:#6E6A63; --line:#E2DFD8; --card:#FFFFFF; --hueco:#EDEAE4;
   --comida:#C7513F; --transporte:#3E6FA8; --ocio:#D98A2B;
-  --hogar:#4E8A5B; --salud:#7A5BA6; --compras:#8C8378; --otros:#5F5A54;
+  --hogar:#4E8A5B; --salud:#7A5BA6; --compras:#8C8378; --viajes:#2F8C8C; --otros:#5F5A54;
   --ingreso:#4E8A5B; --alerta:#C7513F;
 }
 @media (prefers-color-scheme: dark){
@@ -181,7 +181,17 @@ svg.graf{width:100%;height:110px;overflow:visible;margin-top:10px;display:block}
 .tira i.apagado{background:transparent;box-shadow:inset 0 0 0 1px var(--line);opacity:.5}
 .tira div{cursor:pointer}
 .hab.descanso{opacity:.62}
-.hoyNo{font-size:13px;color:var(--muted);flex:none;padding:0 4px}
+.hoyNo{font-size:11px;color:var(--muted);flex:none;background:var(--hueco);
+  padding:3px 9px;border-radius:99px}
+.tira div.ahora{font-weight:600;color:var(--ink)}
+.tira div.ahora i{box-shadow:0 0 0 1.5px var(--ink)}
+
+/* Acumulado del resumen */
+.logro{display:flex;align-items:center;gap:11px;background:var(--card);border-radius:12px;
+  border-left:3px solid var(--line);padding:12px 14px;margin-top:8px;font-size:15px}
+.logro span:nth-child(2){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.logroEmo{font-size:18px;flex:none}
+.logro b{font-weight:600;letter-spacing:-.01em}
 .opciones.dias button{min-width:42px;text-align:center;padding:9px 0}
 .hab.hecho .hab-nom b{opacity:.55}
 .hab.hecho{background:linear-gradient(var(--card),var(--card))}

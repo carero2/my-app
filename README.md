@@ -39,7 +39,7 @@ de sobra este uso.
 
 **Finanzas**
 - Teclado numérico propio para registrar un gasto en dos segundos
-- Siete categorías con código de color tomado de los billetes de euro
+- Ocho categorías con código de color tomado de los billetes de euro
 - Ingresos además de gastos, con balance y tasa de ahorro
 - Presupuesto mensual opcional con barra de progreso
 - Fecha y hora manuales, para efectivo o recibos atrasados
@@ -58,7 +58,8 @@ de sobra este uso.
 - Hábitos de solo seguimiento, que se registran pero no cuentan en el progreso del día
 - Registro retroactivo: tocar cualquier celda de la tira corrige ese periodo
 - Rachas, tira de progreso y resumen calculados sobre la periodicidad de cada hábito
-- Pestaña de resumen con constancia media, mejor racha y totales acumulados
+- Resumen por semana natural, mes o año, con porcentaje sobre lo que tocaba
+  y totales acumulados
 - Archivar en vez de borrar, conservando el historial
 
 **Notas**
@@ -286,6 +287,18 @@ fecha con el selector, así que llegas a cualquier día pasado, no solo a los si
 **El círculo de progreso** solo cuenta los hábitos diarios que tocan hoy y que no estén
 marcados como solo seguimiento. Los semanales y mensuales quedan fuera: si contaran, el
 círculo diría que vas al 50% un día 3 del mes por un objetivo que tienes hasta el día 30.
+La pestaña Hoy, por el mismo motivo, muestra solo los hábitos del día.
+
+**El resumen** se calcula sobre tres ventanas naturales: la semana en curso de lunes a
+domingo, el mes del día 1 al último, y el año completo. El porcentaje es cumplidos entre
+*lo que tocaba hasta hoy*, no entre el rango entero: un miércoles con dos entrenamientos
+de tres días transcurridos marca 67%, no 29%. Los periodos aún no transcurridos no
+penalizan, y tampoco los anteriores a la creación del hábito.
+
+Las sesiones registradas en días libres no cuentan como obligación pero se suman aparte
+como **sesiones fuera de plan**, así que un entrenamiento extra suma sin poder bajar el
+porcentaje. El bloque **Acumulado** muestra el total de cada hábito de cantidad o
+cronómetro en la ventana elegida: horas entrenadas, páginas leídas, kilómetros.
 
 **Colores.** El color pertenece al grupo, no al hábito, y se asigna solo al crear el primero
 de ese grupo. Cambiarlo desde cualquier hábito recolorea todo el grupo. Las categorías de
@@ -302,7 +315,7 @@ Con el Worker desplegado, un atajo puede registrar un gasto **sin abrir la app**
 
 1. **Pedir entrada** → tipo Número → `¿Cuánto?`
 2. **Lista** con las categorías, en minúsculas:
-   `comida`, `transporte`, `compras`, `ocio`, `hogar`, `salud`, `otros`
+   `comida`, `transporte`, `compras`, `ocio`, `hogar`, `salud`, `viajes`, `otros`
 3. **Elegir de la lista** → mensaje `Categoría`
 4. **Obtener contenido de una URL**:
    - URL: `https://TU-WORKER.workers.dev/col/gastos`
@@ -339,7 +352,7 @@ fecha;importe;categoria;nota;tipo
 |---|---|---|
 | `fecha` | Sí | `dd/mm/aaaa` o `aaaa-mm-dd` |
 | `importe` | Sí | Coma o punto decimal. El signo se ignora |
-| `categoria` | No | `comida`, `transporte`, `compras`, `ocio`, `hogar`, `salud`, `otros` |
+| `categoria` | No | `comida`, `transporte`, `compras`, `ocio`, `hogar`, `salud`, `viajes`, `otros` |
 | `nota` | No | Texto, hasta 60 caracteres |
 | `tipo` | No | `ingreso` o `gasto`. Por defecto `gasto` |
 

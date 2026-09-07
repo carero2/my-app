@@ -11,7 +11,8 @@ export function pintar(vista, ir) {
     .filter(g => dia(g.t) === dia() && g.tipo !== 'ingreso')
     .reduce((s, g) => s + g.c, 0);
   const mes = fin.gastado(0), presu = fin.presupuesto();
-  const lista = hab.activos().filter(h => hab.toca(h));
+  /* Solo lo del día: los semanales y mensuales viven en su pestaña. */
+  const lista = hab.activos().filter(h => (h.frec || 'dia') === 'dia' && hab.toca(h));
   const delDia = lista.filter(hab.cuentaHoy);
   const hechos = delDia.filter(h => hab.cumplido(h)).length;
 
