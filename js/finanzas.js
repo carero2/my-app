@@ -10,10 +10,10 @@ import {
 export const CATS = [
   {id:'comida',     nom:'Comida',     emo:'🍽'},
   {id:'transporte', nom:'Transporte', emo:'🚇'},
-  {id:'compras',    nom:'Compras',    emo:'🛍'},
+  {id:'compras',    nom:'Compras',    emo:'👕'},
   {id:'ocio',       nom:'Ocio',       emo:'🍺'},
   {id:'hogar',      nom:'Hogar',      emo:'🏠'},
-  {id:'salud',      nom:'Salud',      emo:'💊'},
+  {id:'salud',      nom:'Gimnasio',   emo:'🏋'},
   {id:'otros',      nom:'Otros',      emo:'📦'},
 ];
 export const cat = id => CATS.find(c => c.id === id) || CATS.at(-1);
@@ -434,6 +434,6 @@ const REGLAS = [
   [/amazon|zara|decathlon|mediamarkt|corte ingles|primark|aliexpress|ikea/i, 'compras'],
   [/cine|netflix|spotify|hbo|disney|steam|teatro|concierto|museo|discoteca|pub/i, 'ocio'],
   [/alquiler|hipoteca|luz|endesa|iberdrola|naturgy|agua|gas |internet|movistar|vodafone|orange|comunidad/i, 'hogar'],
-  [/farmacia|clinic|dentist|hospital|medic|optic|gimnasio|fisio/i, 'salud'],
+  [/gimnasio|gym|basic ?fit|fitness|crossfit|padel|pádel|piscina|fisio|farmacia|clinic|dentist|medic/i, 'salud'],
 ];
 const adivinarCat = txt => REGLAS.find(([re]) => re.test(txt))?.[1] || 'otros';

@@ -3,7 +3,7 @@
    Cada módulo importa de aquí; nadie habla con localStorage directamente.
    ========================================================================== */
 
-export const COLECCIONES = ['gastos', 'habitos', 'registros'];
+export const COLECCIONES = ['gastos', 'habitos', 'registros', 'notas'];
 
 const K = {
   datos:  c => 'vida.' + c,
@@ -27,6 +27,39 @@ export const dia = (ms = Date.now()) => {
 };
 export const desdeDia = s => { const [a,m,d] = s.split('-').map(Number); return new Date(a, m-1, d) };
 export const diaSuma = (s, n) => { const d = desdeDia(s); d.setDate(d.getDate() + n); return dia(d.getTime()) };
+
+/* ---------- Periodos: día, semana (empieza en lunes) y mes ---------- */
+/** Lunes de la semana a la que pertenece esa fecha. */
+export const lunes = (ms = Date.now()) => {
+  const d = new Date(ms);
+  d.setHours(12,0,0,0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));   // domingo (0) cuenta como último día
+  return d;
+};
+/** Clave del periodo. Los días conservan el formato antiguo, así no hay migración. */
+export const periodo = (frec, ms = Date.now()) =>
+  frec === 'semana' ? 's' + dia(lunes(ms).getTime())
+  : frec === 'mes'  ? 'm' + dia(ms).slice(0, 7)
+  : dia(ms);
+
+/** Devuelve la clave de n periodos antes. */
+export function periodoAtras(frec, clave, n) {
+  if (frec === 'semana') return 's' + diaSuma(clave.slice(1), -7 * n);
+  if (frec === 'mes') {
+    const [a, m] = clave.slice(1).split('-').map(Number);
+    const d = new Date(a, m - 1 - n, 1);
+    return 'm' + `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  }
+  return diaSuma(clave, -n);
+}
+export function etiquetaPeriodo(frec, clave) {
+  if (frec === 'semana') return desdeDia(clave.slice(1))
+    .toLocaleDateString('es-ES', {day:'numeric', month:'short'});
+  if (frec === 'mes') { const [a,m] = clave.slice(1).split('-').map(Number);
+    return new Date(a, m-1, 1).toLocaleDateString('es-ES', {month:'short'}).replace('.',''); }
+  return desdeDia(clave).toLocaleDateString('es-ES', {day:'numeric', month:'short'});
+}
+export const NOMBRE_FREC = { dia:'día', semana:'semana', mes:'mes' };
 
 export const inicioMes = off => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth()+off, 1) };
 export const finMes    = off => new Date(inicioMes(off+1).getTime() - 1);

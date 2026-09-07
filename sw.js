@@ -1,9 +1,9 @@
-const CACHE = 'my-app-v4';
+const CACHE = 'vida-v5';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './css/estilo.css',
   './js/app.js', './js/nucleo.js', './js/hoy.js',
-  './js/finanzas.js', './js/habitos.js', './js/ajustes.js',
+  './js/finanzas.js', './js/habitos.js', './js/notas.js', './js/ajustes.js',
   './icons/icon-192.png',
 ];
 

@@ -1,6 +1,7 @@
-# My-app
-App personal por módulos: finanzas y hábitos. Web app que se instala en la pantalla
-de inicio del iPhone, funciona sin conexión y sincroniza con un Worker propio.
+# Vida
+
+App personal por módulos: finanzas, hábitos y notas. Web app que se instala en la
+pantalla de inicio del iPhone, funciona sin conexión y sincroniza con un Worker propio.
 
 ## Estructura
 
@@ -13,7 +14,8 @@ js/app.js                  arranque y navegación
 js/nucleo.js               datos, sincronización, avisos y hojas
 js/hoy.js                  pestaña Hoy
 js/finanzas.js             añadir, movimientos, métricas, importador CSV
-js/habitos.js              hábitos por grupos, con tres tipos
+js/habitos.js              hábitos por grupos, con tipos y periodicidad
+js/notas.js                notas con título, categoría y texto
 js/ajustes.js              nube, presupuesto, copias
 icons/
 ```
@@ -45,4 +47,16 @@ así que puedes reimportar sin duplicar.
 ## Parámetros de URL
 
 - `?add=1` abre directamente el teclado de gastos
-- `?ver=habitos` abre un módulo concreto (hoy, finanzas, habitos, ajustes)
+- `?ver=habitos` abre un módulo concreto (hoy, finanzas, habitos, notas, ajustes)
+
+## Hábitos
+
+Cada hábito tiene **tipo** (sí/no, cantidad o cronómetro) y **periodicidad**
+(cada día, cada semana o cada mes). Las rachas, la tira de progreso y el resumen
+se calculan sobre esa periodicidad: un hábito mensual como "dos libros al mes"
+cuenta meses, no días.
+
+Los registros diarios conservan el formato de siempre (`2026-09-07`); los
+semanales usan el lunes de esa semana (`s2026-09-07`) y los mensuales el mes
+(`m2026-09`). Cambiar la periodicidad de un hábito no borra el historial
+anterior, solo deja de contarlo mientras esté en la nueva.

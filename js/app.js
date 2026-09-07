@@ -5,9 +5,10 @@ import { alCambiar, sincronizar, ultimaSync } from './nucleo.js';
 import * as hoy from './hoy.js';
 import * as finanzas from './finanzas.js';
 import * as habitos from './habitos.js';
+import * as notas from './notas.js';
 import * as ajustes from './ajustes.js';
 
-const MODULOS = { hoy, finanzas, habitos, ajustes };
+const MODULOS = { hoy, finanzas, habitos, notas, ajustes };
 let actual = 'hoy';
 
 export function ir(nombre) {

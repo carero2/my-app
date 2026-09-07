@@ -32,13 +32,13 @@ input,select,textarea{font:inherit;color:inherit}
 
 .tabs{display:flex;border-top:1px solid var(--line);background:var(--paper);
   padding-bottom:env(safe-area-inset-bottom);flex:none}
-.tabs button{flex:1;padding:9px 0 7px;display:grid;justify-items:center;gap:3px;
-  font-size:11px;color:var(--muted);position:relative}
-.tabs button svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;
+.tabs button{flex:1;padding:9px 2px 7px;display:grid;justify-items:center;gap:3px;
+  font-size:10.5px;color:var(--muted);position:relative;min-width:0}
+.tabs button svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.7;
   stroke-linecap:round;stroke-linejoin:round}
 .tabs button[aria-current=page]{color:var(--ink)}
 .tabs button[aria-current=page] svg{stroke-width:2.1}
-.globo{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;border-radius:99px;
+.globo{position:absolute;top:6px;right:calc(50% - 18px);width:8px;height:8px;border-radius:99px;
   background:var(--ocio);display:none}
 .globo.on{display:block}
 
@@ -160,10 +160,37 @@ svg.graf{width:100%;height:110px;overflow:visible;margin-top:10px;display:block}
   display:grid;place-items:center;font-size:16px}
 .crono .play.marcha{background:var(--alerta)}
 .hab .barra{margin-top:11px}
-.semana{display:flex;gap:5px;margin-top:11px}
-.semana div{flex:1;text-align:center;font-size:10px;color:var(--muted)}
-.semana i{display:block;height:22px;border-radius:6px;background:var(--hueco);margin-bottom:3px}
+.tira{display:flex;gap:5px;margin-top:11px}
+.tira div{flex:1;text-align:center;font-size:10px;color:var(--muted);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tira i{display:block;height:22px;border-radius:6px;background:var(--hueco);margin-bottom:3px}
+.tira i.futuro{background:transparent;border:1px dashed var(--line)}
+.hab.hecho .hab-nom b{opacity:.55}
+.hab.hecho{background:linear-gradient(var(--card),var(--card))}
 .racha{font-size:13px;color:var(--muted);margin-top:9px}
+.seg.nuevo{font-weight:600;color:var(--ink)}
+
+/* Cabecera de progreso del día */
+.resumenDia{display:flex;align-items:center;gap:15px;background:var(--card);
+  border-radius:16px;padding:15px 16px;margin-top:12px}
+.resumenDia b{display:block;font-weight:500;font-size:16px}
+.resumenDia small{color:var(--muted);font-size:13px}
+.anillo{width:56px;height:56px;border-radius:50%;flex:none;display:grid;place-items:center;
+  background:conic-gradient(var(--ink) calc(var(--pct)*1%), var(--hueco) 0)}
+.anillo span{width:44px;height:44px;border-radius:50%;background:var(--card);display:grid;
+  place-items:center;font-size:16px;font-weight:600;letter-spacing:-.02em}
+.anillo small{font-size:11px;color:var(--muted);font-weight:400}
+
+/* ---------- Notas ---------- */
+.nota{background:var(--card);border-radius:16px;padding:15px 16px;margin-top:10px}
+.nota-cab{display:flex;align-items:baseline;gap:10px}
+.nota-cab b{flex:1;min-width:0;font-weight:500;font-size:17px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nota-cat{flex:none;font-size:12px;color:var(--muted);background:var(--hueco);
+  padding:3px 9px;border-radius:99px}
+.nota p{margin:8px 0 0;font-size:15px;color:var(--ink);line-height:1.5;
+  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.nota small{display:block;margin-top:9px;font-size:12px;color:var(--muted)}
 
 /* ---------- Hoy ---------- */
 .saludo{padding:20px 0 0;font-size:24px;font-weight:600;letter-spacing:-.02em}
