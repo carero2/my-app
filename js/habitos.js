@@ -57,9 +57,11 @@ export function toca(h, p = periodo(frecDe(h), Date.now())) {
   if (!Array.isArray(h.dias) || !h.dias.length) return true;
   return h.dias.includes(numDia(p));
 }
+/** Un hábito de solo seguimiento se registra pero no es un objetivo:
+    no se cumple, no genera racha y no entra en ningún porcentaje. */
+export const esObjetivo = h => h.cuenta !== false;
 /** ¿Entra en el círculo de progreso del día? */
-export const cuentaHoy = h =>
-  frecDe(h) === 'dia' && h.cuenta !== false && toca(h);
+export const cuentaHoy = h => frecDe(h) === 'dia' && esObjetivo(h) && toca(h);
 
 /* ---------- Registros ---------- */
 const clave = (h, ms = Date.now()) => periodo(frecDe(h), ms);
@@ -68,11 +70,13 @@ export const registro = (h, p = clave(h)) =>
 export const valorDe = (h, p = clave(h)) => registro(h, p)?.v || 0;
 
 export function cumplido(h, p = clave(h)) {
+  if (!esObjetivo(h)) return false;
   const v = valorDe(h, p);
   return h.tipo === 'sino' ? v >= 1 : v >= (h.objetivo || 1);
 }
 /** Rachas: los periodos en los que no toca se saltan, no la rompen. */
 export function racha(h) {
+  if (!esObjetivo(h)) return 0;
   const frec = frecDe(h);
   let n = 0, p = clave(h), tope = 0;
   if (!toca(h, p) || !cumplido(h, p)) {
@@ -192,7 +196,7 @@ export function tarjeta(h) {
   const sub = [
     frec === 'dia' ? diasTexto(h) : FRECS[frec].corto,
     obj ? 'objetivo ' + (h.tipo === 'crono' ? obj + ' min' : obj + ' ' + (h.unidad || '')) : '',
-    h.cuenta === false ? 'no cuenta en el día' : '',
+    esObjetivo(h) ? '' : 'solo seguimiento',
   ].filter(Boolean).join(' · ');
 
   return `<div class="hab ${hecho ? 'hecho' : ''} ${hoyToca ? '' : 'descanso'}" data-hab="${h.id}">
@@ -405,28 +409,40 @@ const acumulado = (h, suma) => h.tipo === 'crono'
   ? horas(suma)
   : redondo(Math.round(suma * 10) / 10) + (h.unidad ? ' ' + h.unidad : '');
 
+/* Un hábito mensual no tiene sentido en el resumen semanal: su periodo no
+   cabe dentro de la ventana. Cada rango admite las periodicidades que contiene. */
+const ADMITE = { semana: ['dia','semana'], mes: ['dia','semana','mes'], ano: ['dia','semana','mes'] };
+
 export function calcularResumen(rango) {
   const R = RANGOS[rango];
   const iniMs = aMs(R.ini(), false), finMs = aMs(R.fin(), true);
-  const filas = activos().map(h => {
-    let debidos = 0, hechos = 0, extras = 0, suma = 0;
+  const medir = h => {
+    let debidos = 0, hechos = 0, extras = 0, suma = 0, veces = 0;
     for (const p of periodosEn(h, iniMs, finMs)) {
       const v = valorDe(h, p);
       suma += v;
-      const ok = cumplido(h, p);
-      if (toca(h, p)) { debidos++; if (ok) hechos++ }
+      if (v > 0) veces++;
+      if (!esObjetivo(h)) continue;
+      if (toca(h, p)) { debidos++; if (cumplido(h, p)) hechos++ }
       else if (v > 0) extras++;
     }
-    return { h, debidos, hechos, extras, suma,
+    return { h, debidos, hechos, extras, suma, veces,
              pct: debidos ? Math.round((hechos / debidos) * 100) : null };
-  }).filter(f => f.debidos || f.extras || f.suma);
+  };
+
+  const dentro = activos().filter(h => ADMITE[rango].includes(frecDe(h)));
+  const filas = dentro.filter(esObjetivo).map(medir)
+    .filter(f => f.debidos || f.extras || f.suma);
+  const seguimiento = dentro.filter(h => !esObjetivo(h)).map(medir)
+    .filter(f => f.suma > 0);
 
   const deb = filas.reduce((s,f) => s + f.debidos, 0);
   const hec = filas.reduce((s,f) => s + f.hechos, 0);
-  return { filas, deb, hec,
+  return { filas, seguimiento, deb, hec,
            extras: filas.reduce((s,f) => s + f.extras, 0),
            pct: deb ? Math.round((hec / deb) * 100) : null,
-           completos: filas.filter(f => f.pct === 100).length };
+           completos: filas.filter(f => f.pct === 100).length,
+           fuera: activos().length - dentro.length };
 }
 
 function pintarResumen(c) {
@@ -438,7 +454,8 @@ function pintarResumen(c) {
     : `${R.ini().toLocaleDateString('es-ES',{day:'numeric',month:'short'})} – ` +
       `${R.fin().toLocaleDateString('es-ES',{day:'numeric',month:'short'})}`;
 
-  const logros = r.filas.filter(f => f.h.tipo !== 'sino' && f.suma > 0)
+  const logros = [...r.filas, ...r.seguimiento]
+    .filter(f => f.h.tipo !== 'sino' && f.suma > 0)
     .sort((a,b) => b.suma - a.suma);
 
   c.innerHTML = `
@@ -465,6 +482,8 @@ function pintarResumen(c) {
       <div class="mini"><b class="num">${r.extras ? '+' + r.extras : '0'}</b>
         <small>sesiones fuera de plan</small></div>
     </div>
+    ${r.fuera ? `<p class="pieNota">${r.fuera} hábito${r.fuera === 1 ? '' : 's'} de periodo más
+      largo que esta ventana; ${r.fuera === 1 ? 'aparece' : 'aparecen'} en Mes o en Año.</p>` : ''}
 
     ${logros.length ? `<div class="etiqueta">Acumulado ${R.etq}</div>
       ${logros.map(f => `<div class="logro" style="border-left-color:${colorDe(f.h)}">
@@ -485,7 +504,21 @@ function pintarResumen(c) {
         </div>
         <div class="barra"><i style="width:${f.pct ?? 0}%;background:${col}"></i></div>
       </div>`;
-    }).join('') : '<p class="vacio">Nada registrado en este periodo.</p>'}`;
+    }).join('') : '<p class="vacio">Nada registrado en este periodo.</p>'}
+
+    ${r.seguimiento.length ? `<div class="etiqueta">Solo seguimiento</div>
+      <p class="pieNota" style="padding:0 4px 4px">Se registran pero no son objetivos,
+        así que no cuentan en ningún porcentaje.</p>
+      ${r.seguimiento.map(f => {
+        const col = colorDe(f.h);
+        return `<div class="panel" style="padding:14px 15px">
+          <div class="hab-cab">
+            <div class="punto" style="background:${col}22;color:${col}">${f.h.emo || '•'}</div>
+            <div class="hab-nom"><b>${escapar(f.h.nombre)}</b>
+              <small>${f.veces} ${f.veces === 1 ? 'registro' : 'registros'} ${RANGOS[resSeg].etq}</small></div>
+            <div class="imp num">${f.h.tipo === 'sino' ? f.veces : escapar(acumulado(f.h, f.suma))}</div>
+          </div></div>`;
+      }).join('')}` : ''}`;
 
   c.querySelector('#resSegs').onclick = e => {
     const b = e.target.closest('[data-r]'); if (!b) return;
@@ -629,15 +662,19 @@ export function hojaHabito(h) {
       return PALETA.find(c => !usados.has(c)) || PALETA[0];
     };
     const pintarDias = () => {
-      $('#hDias').innerHTML = frec !== 'dia' ? '' : `
+      $('#hDias').innerHTML = (frec !== 'dia' ? '' : `
         <label><span>Días en los que cuenta</span></label>
         <div class="opciones dias" id="hDiasBtns">${DIAS.map(([n,l]) =>
           `<button data-d="${n}" aria-pressed="${!dias.length || dias.includes(n)}">${l}</button>`).join('')}</div>
         <p class="pieNota" style="padding:6px 2px 0">Los días que no marques se saltan:
-          no rompen la racha ni cuentan en el progreso del día.</p>
-        <div class="opciones" style="margin-top:10px" id="hCuenta">
-          <button data-c="1" aria-pressed="${cuenta}">Cuenta en el progreso</button>
-          <button data-c="0" aria-pressed="${!cuenta}">Solo seguimiento</button></div>`;
+          no rompen la racha ni cuentan en el progreso del día.</p>`) + `
+        <label style="margin-top:14px"><span>¿Es un objetivo?</span></label>
+        <div class="opciones" id="hCuenta">
+          <button data-c="1" aria-pressed="${cuenta}">Objetivo a cumplir</button>
+          <button data-c="0" aria-pressed="${!cuenta}">Solo llevar la cuenta</button></div>
+        <p class="pieNota" style="padding:6px 2px 0">${cuenta
+          ? 'Cuenta en los porcentajes y genera racha.'
+          : 'Se registra y se acumula, pero nunca aparece como cumplido ni entra en ningún porcentaje.'}</p>`;
     };
     const pintarExtra = () => {
       $('#hAyuda').textContent = TIPOS[tipo].ayuda;
@@ -676,11 +713,7 @@ export function hojaHabito(h) {
           x.setAttribute('aria-pressed', dias.includes(Number(x.dataset.d))));
       }
       const bc = e.target.closest('#hCuenta [data-c]');
-      if (bc) {
-        cuenta = bc.dataset.c === '1';
-        caja.querySelectorAll('#hCuenta [data-c]').forEach(x =>
-          x.setAttribute('aria-pressed', (x.dataset.c === '1') === cuenta));
-      }
+      if (bc) { cuenta = bc.dataset.c === '1'; pintarDias() }
     });
     $('#hTipos').onclick = e => {
       const b = e.target.closest('[data-t]'); if (!b) return;
@@ -721,7 +754,7 @@ export function hojaHabito(h) {
         unidad: $('#hUni')?.value.trim() || '',
         paso: parseFloat($('#hPaso')?.value) || 1,
         dias: frec === 'dia' && dias.length && dias.length < 7 ? dias : [],
-        cuenta: frec === 'dia' ? cuenta : false,
+        cuenta,
       };
       if (nuevo) { anadir('habitos', { ...campos, orden: datos.habitos.length }); avisar('Hábito creado') }
       else {

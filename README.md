@@ -276,9 +276,11 @@ cronómetro, el objetivo en minutos actúa como pomodoro: al llegar, vibra y avi
 no marques se saltan: no rompen la racha, no cuentan en el progreso y aparecen apagados en
 la tira. Un hábito de trabajo de lunes a viernes no se penaliza los sábados.
 
-**Solo seguimiento.** Marcando esa opción, el hábito se registra con normalidad pero queda
-fuera del círculo de progreso del día. Sirve para lo que quieres medir sin convertirlo en un
-objetivo, o para lo que preferirías reducir en lugar de aumentar.
+**Objetivo o solo seguimiento.** Un hábito puede no ser un objetivo. Marcado como *solo
+llevar la cuenta*, se registra y se acumula con normalidad, pero **nunca aparece como
+cumplido**, no genera racha y no entra en ningún porcentaje ni en el círculo del día. Es lo
+que quieres para medir sin premiar: comidas poco sanas, cigarros, gasto en caprichos. En el
+resumen tienen su propia sección, con el total del periodo en vez de un porcentaje.
 
 **Registro retroactivo.** Si se te olvidó anotar algo, toca cualquier celda de la tira de
 progreso de ese hábito y se abre el registro de ese periodo. Dentro puedes además cambiar la
@@ -294,6 +296,10 @@ domingo, el mes del día 1 al último, y el año completo. El porcentaje es cump
 *lo que tocaba hasta hoy*, no entre el rango entero: un miércoles con dos entrenamientos
 de tres días transcurridos marca 67%, no 29%. Los periodos aún no transcurridos no
 penalizan, y tampoco los anteriores a la creación del hábito.
+
+Cada ventana solo incluye los hábitos cuyo periodo cabe dentro: los mensuales no aparecen
+en el resumen semanal, porque su periodo es más largo que la ventana. Un aviso al pie indica
+cuántos quedan fuera y dónde verlos.
 
 Las sesiones registradas en días libres no cuentan como obligación pero se suman aparte
 como **sesiones fuera de plan**, así que un entrenamiento extra suma sin poder bajar el
@@ -382,7 +388,7 @@ se envía al servidor.
   tipo: 'sino' | 'cantidad' | 'crono',
   frec: 'dia' | 'semana' | 'mes',
   dias: [1,2,3,4,5],        // 1 lunes … 7 domingo. Vacío = todos los días
-  cuenta: true,             // false = solo seguimiento, fuera del círculo del día
+  cuenta: true,             // false = solo seguimiento: nunca se cumple ni puntúa
   objetivo: 20, unidad: 'páginas', paso: 1, orden: 0, archivado: false }
 ```
 
