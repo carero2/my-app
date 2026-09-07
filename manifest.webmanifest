@@ -1,6 +1,6 @@
 {
-  "name": "Gastos",
-  "short_name": "Gastos",
+  "name": "My-app",
+  "short_name": "My-app",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
