@@ -7,7 +7,7 @@
    ========================================================================== */
 import {
   datos, anadir, actualizar, ajuste, enLote,
-  dia, desdeDia, lunes, periodo, periodoAtras,
+  dia, diaSuma, desdeDia, lunes, periodo, periodoAtras,
   avisar, emitir,
 } from './nucleo.js';
 
@@ -155,24 +155,24 @@ setInterval(() => {
 
 
 /* ---------- Resumen ----------
-   Tres ventanas naturales en vez de "últimos N periodos": la semana en curso
-   (lunes a domingo), el mes (día 1 a fin de mes) y el año. */
-let resSeg = 'semana';
+   Tres ventanas naturales: la semana en curso (lunes a domingo), el mes
+   (día 1 al último) y el año. Cada una acepta un desplazamiento, para poder
+   compararse con la anterior. */
 
 export const RANGOS = {
-  semana: { nom:'Semana', etq:'esta semana',
-            ini: () => lunes(),
-            fin: () => { const d = lunes(); d.setDate(d.getDate() + 6); return d } },
-  mes:    { nom:'Mes', etq:'este mes',
-            ini: () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) },
-            fin: () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth()+1, 0) } },
-  ano:    { nom:'Año', etq:'este año',
-            ini: () => new Date(new Date().getFullYear(), 0, 1),
-            fin: () => new Date(new Date().getFullYear(), 11, 31) },
+  semana: { nom:'Semana', etq:'esta semana', previo:'la semana pasada', sub:'dia',
+            ini: (o=0) => { const d = lunes(); d.setDate(d.getDate() + 7*o); return d },
+            fin: (o=0) => { const d = lunes(); d.setDate(d.getDate() + 7*o + 6); return d } },
+  mes:    { nom:'Mes', etq:'este mes', previo:'el mes pasado', sub:'semana',
+            ini: (o=0) => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth()+o, 1) },
+            fin: (o=0) => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth()+o+1, 0) } },
+  ano:    { nom:'Año', etq:'este año', previo:'el año pasado', sub:'mes',
+            ini: (o=0) => new Date(new Date().getFullYear()+o, 0, 1),
+            fin: (o=0) => new Date(new Date().getFullYear()+o, 11, 31) },
 };
 const aMs = (d, fin) => { d.setHours(fin ? 23 : 0, fin ? 59 : 0, fin ? 59 : 0, 0); return d.getTime() };
 
-/** Periodos del hábito dentro del rango que ya han empezado.
+/** Periodos del hábito dentro de la ventana que ya han empezado.
  *  Nunca cuenta periodos anteriores a la creación del hábito: uno creado
  *  anteayer no debe salir al 7% por compararlo con el mes entero. */
 function periodosEn(h, iniMs, finMs) {
@@ -206,34 +206,106 @@ export const acumulado = (h, suma) => h.tipo === 'crono'
    cabe dentro de la ventana. Cada rango admite las periodicidades que contiene. */
 const ADMITE = { semana: ['dia','semana'], mes: ['dia','semana','mes'], ano: ['dia','semana','mes'] };
 
-export function calcularResumen(rango) {
-  const R = RANGOS[rango];
-  const iniMs = aMs(R.ini(), false), finMs = aMs(R.fin(), true);
-  const medir = h => {
-    let debidos = 0, hechos = 0, extras = 0, suma = 0, veces = 0;
-    for (const p of periodosEn(h, iniMs, finMs)) {
-      const v = valorDe(h, p);
-      suma += v;
-      if (v > 0) veces++;
-      if (!esObjetivo(h)) continue;
-      if (toca(h, p)) { debidos++; if (cumplido(h, p)) hechos++ }
-      else if (v > 0) extras++;
-    }
-    return { h, debidos, hechos, extras, suma, veces,
-             pct: debidos ? Math.round((hechos / debidos) * 100) : null };
-  };
+function medirHabito(h, iniMs, finMs) {
+  let debidos = 0, hechos = 0, extras = 0, suma = 0, veces = 0;
+  for (const p of periodosEn(h, iniMs, finMs)) {
+    const v = valorDe(h, p);
+    suma += v;
+    if (v > 0) veces++;
+    if (!esObjetivo(h)) continue;
+    if (toca(h, p)) { debidos++; if (cumplido(h, p)) hechos++ }
+    else if (v > 0) extras++;
+  }
+  return { h, debidos, hechos, extras, suma, veces,
+           pct: debidos ? Math.round((hechos / debidos) * 100) : null };
+}
 
+/** Días del rango, ya transcurridos, en los que se cumplió todo lo que tocaba. */
+function diasPerfectos(iniMs, finMs) {
+  const diarios = activos().filter(h => frecDe(h) === 'dia' && esObjetivo(h));
+  if (!diarios.length) return { perfectos: 0, conAlgo: 0 };
+  let perfectos = 0, conAlgo = 0;
+  let d = dia(iniMs);
+  const tope = dia(Math.min(finMs, Date.now()));
+  let guarda = 0;
+  while (d <= tope && guarda++ < 400) {
+    const tocaban = diarios.filter(h => toca(h, d) && d >= periodo('dia', h.t || 0));
+    if (tocaban.length) {
+      conAlgo++;
+      if (tocaban.every(h => cumplido(h, d))) perfectos++;
+    }
+    d = diaSuma(d, 1);
+  }
+  return { perfectos, conAlgo };
+}
+
+export function calcularResumen(rango, off = 0) {
+  const R = RANGOS[rango];
+  const iniMs = aMs(R.ini(off), false), finMs = aMs(R.fin(off), true);
   const dentro = activos().filter(h => ADMITE[rango].includes(frecDe(h)));
-  const filas = dentro.filter(esObjetivo).map(medir)
+  const filas = dentro.filter(esObjetivo).map(h => medirHabito(h, iniMs, finMs))
     .filter(f => f.debidos || f.extras || f.suma);
-  const seguimiento = dentro.filter(h => !esObjetivo(h)).map(medir)
+  const seguimiento = dentro.filter(h => !esObjetivo(h)).map(h => medirHabito(h, iniMs, finMs))
     .filter(f => f.suma > 0);
 
   const deb = filas.reduce((s,f) => s + f.debidos, 0);
   const hec = filas.reduce((s,f) => s + f.hechos, 0);
-  return { filas, seguimiento, deb, hec,
-           extras: filas.reduce((s,f) => s + f.extras, 0),
-           pct: deb ? Math.round((hec / deb) * 100) : null,
-           completos: filas.filter(f => f.pct === 100).length,
-           fuera: activos().length - dentro.length };
+  const conMeta = filas.filter(f => f.debidos);
+  const ordenadas = [...conMeta].sort((a,b) => b.pct - a.pct);
+
+  return {
+    filas, seguimiento, deb, hec, iniMs, finMs,
+    extras: filas.reduce((s,f) => s + f.extras, 0),
+    pct: deb ? Math.round((hec / deb) * 100) : null,
+    completos: conMeta.filter(f => f.pct === 100).length,
+    conMeta: conMeta.length,
+    mejor: ordenadas[0] || null,
+    peor: ordenadas.length > 1 ? ordenadas.at(-1) : null,
+    ...diasPerfectos(iniMs, finMs),
+    fuera: activos().length - dentro.length,
+  };
+}
+
+/** Serie de subperiodos para el gráfico: días de la semana, semanas del mes
+ *  o meses del año, cada uno con su porcentaje de cumplimiento. */
+export function serieResumen(rango, off = 0) {
+  const R = RANGOS[rango];
+  const iniMs = aMs(R.ini(off), false), finMs = aMs(R.fin(off), true);
+  const dentro = activos().filter(h => ADMITE[rango].includes(frecDe(h)) && esObjetivo(h));
+  const ahora = Date.now();
+  const trozos = [];
+
+  if (R.sub === 'dia') {
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(iniMs); d.setDate(d.getDate() + i);
+      trozos.push({ etq: ['L','M','X','J','V','S','D'][i],
+                    a: aMs(new Date(d), false), b: aMs(new Date(d), true) });
+    }
+  } else if (R.sub === 'semana') {
+    /* La primera semana del mes suele empezar a media semana: se recorta al día 1. */
+    let d = new Date(iniMs);
+    let guarda = 0;
+    while (d.getTime() <= finMs && guarda++ < 8) {
+      const a = new Date(d);
+      const b = lunes(d.getTime()); b.setDate(b.getDate() + 6);
+      trozos.push({ etq: 'S' + (trozos.length + 1),
+                    a: aMs(a, false), b: aMs(new Date(Math.min(b.getTime(), finMs)), true) });
+      const sig = lunes(d.getTime()); sig.setDate(sig.getDate() + 7); d = sig;
+    }
+  } else {
+    const anio = new Date(iniMs).getFullYear();
+    for (let m = 0; m < 12; m++)
+      trozos.push({ etq: new Date(anio, m, 1).toLocaleDateString('es-ES',{month:'narrow'}),
+                    a: aMs(new Date(anio, m, 1), false), b: aMs(new Date(anio, m+1, 0), true) });
+  }
+
+  return trozos.filter(Boolean).map(t => {
+    if (t.a > ahora) return { ...t, pct: null, futuro: true };
+    let deb = 0, hec = 0;
+    for (const h of dentro) {
+      const m = medirHabito(h, t.a, t.b);
+      deb += m.debidos; hec += m.hechos;
+    }
+    return { ...t, deb, hec, pct: deb ? Math.round((hec / deb) * 100) : null, futuro: false };
+  });
 }

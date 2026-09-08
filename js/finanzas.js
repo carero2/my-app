@@ -59,6 +59,20 @@ export const delMes = off => {
 };
 export const gastado = off => delMes(off).filter(g => !esIngreso(g)).reduce((s,g) => s + g.c, 0);
 export const ingresado = off => delMes(off).filter(esIngreso).reduce((s,g) => s + g.c, 0);
+/* ---------- Consultas por año ---------- */
+export const delAnio = (off = 0) => {
+  const a = new Date(new Date().getFullYear() + off, 0, 1).getTime();
+  const b = new Date(new Date().getFullYear() + off, 11, 31, 23, 59, 59, 999).getTime();
+  return datos.gastos.filter(g => g.t >= a && g.t <= b);
+};
+export const gastadoAnio   = (off = 0) => delAnio(off).filter(g => !esIngreso(g)).reduce((s,g) => s+g.c, 0);
+export const ingresadoAnio = (off = 0) => delAnio(off).filter(esIngreso).reduce((s,g) => s+g.c, 0);
+/** Desplazamiento en meses desde hoy hasta el mes m del año con desplazamiento off. */
+const offDeMes = (m, off = 0) => {
+  const hoy = new Date();
+  return (new Date().getFullYear() + off - hoy.getFullYear()) * 12 + (m - hoy.getMonth());
+};
+
 /* Dos niveles independientes y compatibles: un presupuesto para todo el mes y,
    opcionalmente, un límite propio para cada categoría. */
 export const presupuesto  = () => ajuste('presupuesto') || 0;
@@ -182,7 +196,7 @@ function hojaFijo(f) {
 }
 
 /* ---------- Estado del módulo ---------- */
-let sub = 'anadir', off = 0, filtro = null, busca = '';
+let sub = 'anadir', off = 0, filtro = null, busca = '', vistaMet = 'mes', anioOff = 0;
 let buffer = '', catSel = null, tipoSel = 'gasto', nota = '', fechaSel = null, editando = null;
 /** Nunca devuelve una categoría archivada o inexistente: si la seleccionada
     desaparece, cae en la primera disponible. */
@@ -440,9 +454,24 @@ function pintarLista(c) {
    Submódulo: métricas
    ========================================================================== */
 function pintarMetricas(c) {
+  c.innerHTML = `
+    <div class="opciones" id="metSegs" style="margin-top:10px">
+      <button data-v="mes" aria-pressed="${vistaMet==='mes'}">Mes</button>
+      <button data-v="ano" aria-pressed="${vistaMet==='ano'}">Año</button>
+    </div>
+    <div id="metCuerpo"></div>`;
+  c.querySelector('#metSegs').onclick = e => {
+    const b = e.target.closest('[data-v]'); if (!b) return;
+    vistaMet = b.dataset.v; pintarMetricas(c);
+  };
+  const caja = c.querySelector('#metCuerpo');
+  vistaMet === 'ano' ? pintarAnio(caja) : pintarMes(caja);
+}
+
+function pintarMes(c) {
   c.innerHTML = `<div class="navmes" id="nav"></div><div id="cuerpo"></div>`;
   navMes(c.querySelector('#nav'), off,
-    n => { off = n; pintarMetricas(c) },
+    n => { off = n; pintarMes(c) },
     datos.gastos.length ? Math.min(...datos.gastos.map(g => g.t)) : Date.now());
 
   const gs = delMes(off);
@@ -538,6 +567,113 @@ function pintarMetricas(c) {
     </div>`;
 }
 const desdeClave = s => { const [a,m,d] = s.split('-').map(Number); return new Date(a, m-1, d) };
+
+/* ==========================================================================
+   Métricas del año
+   ========================================================================== */
+function pintarAnio(c) {
+  const anio = new Date().getFullYear() + anioOff;
+  const primero = datos.gastos.length ? Math.min(...datos.gastos.map(g => g.t)) : Date.now();
+  const gs = delAnio(anioOff);
+
+  c.innerHTML = `<div class="navmes" id="navA"></div><div id="cuerpoA"></div>`;
+  const nav = c.querySelector('#navA');
+  nav.innerHTML = `
+    <button data-d="-1" ${new Date(anio,0,1).getTime() > primero ? '' : 'disabled'}
+      aria-label="Anterior">‹</button>
+    <b>${anio}</b>
+    <button data-d="1" ${anioOff < 0 ? '' : 'disabled'} aria-label="Siguiente">›</button>`;
+  nav.onclick = e => {
+    const b = e.target.closest('button[data-d]');
+    if (b && !b.disabled) { anioOff += parseInt(b.dataset.d); pintarAnio(c) }
+  };
+
+  const cuerpo = c.querySelector('#cuerpoA');
+  if (!gs.length) { cuerpo.innerHTML = `<p class="vacio">Sin movimientos en ${anio}.</p>`; return }
+
+  const total = gastadoAnio(anioOff), entra = ingresadoAnio(anioOff);
+  const prev  = gastadoAnio(anioOff - 1);
+  const delta = prev > 0 ? ((total - prev) / prev) * 100 : null;
+
+  /* Meses con datos: el año en curso solo lleva los transcurridos. */
+  const enCurso = anioOff === 0;
+  const mesesVividos = enCurso ? new Date().getMonth() + 1 : 12;
+  const porMes = Array.from({length: 12}, (_, m) => ({
+    m, etq: new Date(anio, m, 1).toLocaleDateString('es-ES',{month:'narrow'}),
+    v: gastado(offDeMes(m, anioOff)),
+  }));
+  const conGasto = porMes.filter(x => x.v > 0);
+  const caro  = conGasto.length ? conGasto.reduce((a,b) => b.v > a.v ? b : a) : null;
+  const barato = conGasto.length ? conGasto.reduce((a,b) => b.v < a.v ? b : a) : null;
+  const nomMes = m => new Date(anio, m, 1).toLocaleDateString('es-ES',{month:'long'});
+
+  const porCat = catsTodas().map(x => ({...x,
+      s: gs.filter(g => g.cat === x.id && !esIngreso(g)).reduce((s,g) => s+g.c, 0) }))
+    .filter(x => x.s > 0).sort((a,b) => b.s - a.s);
+
+  cuerpo.innerHTML = `
+    <div class="panel">
+      <div class="granCifra num">${eur(total)}</div>
+      <div class="delta">${delta === null
+        ? `Gastado en ${anio}` + (enCurso ? ` · ${mesesVividos} ${mesesVividos===1?'mes':'meses'}` : '')
+        : (delta >= 0 ? '▲ ' : '▼ ') + Math.abs(delta).toFixed(0) + '% respecto a ' + (anio-1)}</div>
+    </div>
+
+    <div class="rejilla">
+      <div class="mini"><b class="num">${eur0(total / mesesVividos)}</b><small>al mes de media</small></div>
+      <div class="mini"><b class="num">${gs.length}</b><small>movimientos</small></div>
+      ${caro ? `<div class="mini"><b class="num">${eur0(caro.v)}</b>
+        <small>${nomMes(caro.m)}, el mes más caro</small></div>` : ''}
+      ${barato && barato.m !== caro.m ? `<div class="mini"><b class="num">${eur0(barato.v)}</b>
+        <small>${nomMes(barato.m)}, el más contenido</small></div>`
+        : `<div class="mini"><b class="num">${eur0(total / Math.max(1, gs.length))}</b>
+        <small>gasto medio</small></div>`}
+    </div>
+
+    ${entra > 0 ? `<div class="rejilla">
+      <div class="mini"><b class="num" style="color:var(--ingreso)">${eur0(entra)}</b>
+        <small>ingresos del año</small></div>
+      <div class="mini"><b class="num" style="${entra-total<0?'color:var(--alerta)':''}">
+        ${entra-total>=0?'+':''}${eur0(entra-total)}</b><small>balance</small></div>
+      <div class="mini"><b class="num">${Math.max(0, Math.round((1-total/entra)*100))}%</b>
+        <small>de lo que entra, ahorrado</small></div>
+      <div class="mini"><b class="num">${eur0((entra-total)/mesesVividos)}</b>
+        <small>ahorro mensual medio</small></div>
+    </div>` : ''}
+
+    <div class="panel">
+      <div style="font-size:15px;color:var(--muted)">Gasto mes a mes</div>
+      ${grafAnio(porMes, enCurso ? new Date().getMonth() : 11)}
+    </div>
+
+    <div class="panel">
+      <div style="font-size:15px;color:var(--muted)">En qué se te fue el año</div>
+      ${porCat.map(x => `<div class="filaCat">
+        <span>${x.emo} ${x.nom}</span><span class="num">${eur(x.s)}</span>
+        <div class="barra"><i style="width:${(x.s/total)*100}%;background:${color(x.id)}"></i></div>
+        <span class="pct num">${((x.s/total)*100).toFixed(0)}% · ${eur0(x.s/mesesVividos)}/mes</span>
+      </div>`).join('')}
+    </div>`;
+}
+
+function grafAnio(serie, ultimo) {
+  const max = Math.max(...serie.map(s => s.v), 1);
+  const an = 100 / 12, ancho = an * 0.6;
+  return `<svg class="graf" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    ${serie.map((s,i) => {
+      const h = (s.v / max) * 100;
+      return `<rect x="${i*an + (an-ancho)/2}" y="${100-h}" width="${ancho}"
+        height="${Math.max(h, 1.2)}" fill="${i > ultimo ? 'transparent' : 'var(--ink)'}"
+        opacity="${i > ultimo ? '.15' : i === ultimo ? '1' : '.6'}"/>`;
+    }).join('')}
+  </svg>
+  <div style="display:flex;margin-top:8px">
+    ${serie.map((s,i) => `<div style="flex:1;text-align:center;font-size:10px;line-height:1.4;
+      color:var(--muted)${i === ultimo ? ';color:var(--ink);font-weight:600' : ''}">
+      ${s.etq}<br><span class="num">${s.v ? Math.round(s.v/1000 >= 1 ? s.v/1000 : s.v)
+        + (s.v >= 1000 ? 'k' : '') : '—'}</span></div>`).join('')}
+  </div>`;
+}
 
 function grafMeses() {
   const serie = [];

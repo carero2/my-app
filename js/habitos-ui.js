@@ -12,7 +12,7 @@ import {
   activos, archivados, grupos, frecDe, clave, colorDe, colorGrupo, fijarColorGrupo,
   toca, esObjetivo, cuentaHoy, valorDe, cumplido, racha, fijarValor,
   cronoActivo, arrancarCrono, pararCrono, minutosCrono, reloj,
-  redondo, acumulado, calcularResumen,
+  redondo, acumulado, calcularResumen, serieResumen,
 } from './habitos.js';
 
 /* Refresca los relojes en pantalla mientras haya un cronómetro en marcha. */
@@ -157,7 +157,8 @@ export function conectar(contenedor) {
 /* ==========================================================================
    Vista del módulo
    ========================================================================== */
-let seg = null;   // null = Todos · 'resumen' · 'archivados' · nombre de grupo
+let seg = null;      // null = Todos · 'resumen' · 'archivados' · nombre de grupo
+let resSeg = 'semana';   // ventana del resumen: semana · mes · ano
 
 export function pintar(vista) {
   const gs = grupos();
@@ -234,16 +235,43 @@ export function anillo(lista) {
 
 function pintarResumen(c) {
   if (!activos().length) { c.innerHTML = '<p class="vacio">Nada que resumir todavía.</p>'; return }
-  const r = calcularResumen(resSeg);
+
   const R = RANGOS[resSeg];
+  const r = calcularResumen(resSeg);
+  const previo = calcularResumen(resSeg, -1);
+  const serie = serieResumen(resSeg);
   const rotulo = resSeg === 'ano'
     ? String(new Date().getFullYear())
     : `${R.ini().toLocaleDateString('es-ES',{day:'numeric',month:'short'})} – ` +
       `${R.fin().toLocaleDateString('es-ES',{day:'numeric',month:'short'})}`;
 
+  const delta = (r.pct !== null && previo.pct !== null) ? r.pct - previo.pct : null;
   const logros = [...r.filas, ...r.seguimiento]
     .filter(f => f.h.tipo !== 'sino' && f.suma > 0)
     .sort((a,b) => b.suma - a.suma);
+
+  /* Cada ventana destaca lo que en ella tiene sentido: la semana mira el día a
+     día, el mes la constancia, y el año el volumen acumulado. */
+  const minis = {
+    semana: [
+      [r.perfectos + (r.conAlgo ? '/' + r.conAlgo : ''), 'días redondos'],
+      [r.hec, 'cumplidos'],
+      [Math.max(0, r.deb - r.hec), r.deb - r.hec === 1 ? 'te queda' : 'te quedan'],
+      [r.extras ? '+' + r.extras : '0', 'fuera de plan'],
+    ],
+    mes: [
+      [r.perfectos, 'días redondos'],
+      [r.completos + '/' + r.conMeta, 'hábitos al 100%'],
+      [r.hec, 'cumplidos este mes'],
+      [r.extras ? '+' + r.extras : '0', 'fuera de plan'],
+    ],
+    ano: [
+      [r.hec, 'cumplidos en el año'],
+      [r.perfectos, 'días redondos'],
+      [mejorSub(serie)?.etqLarga || '—', 'mejor periodo'],
+      [r.completos + '/' + r.conMeta, 'hábitos al 100%'],
+    ],
+  }[resSeg];
 
   c.innerHTML = `
     <div class="opciones" id="resSegs" style="margin-top:4px">
@@ -257,26 +285,37 @@ function pintarResumen(c) {
       <div class="delta">${r.deb
         ? `${r.hec} de ${r.deb} cumplidos de lo que tocaba ${R.etq}`
         : 'Todavía no tocaba nada en este periodo'}</div>
-      ${r.deb ? `<div class="barra" style="margin-top:12px">
-        <i style="width:${r.pct}%"></i></div>` : ''}
+      ${delta !== null ? `<div class="delta">${delta === 0 ? '=' : delta > 0 ? '▲ ' + delta : '▼ ' + Math.abs(delta)}
+        ${delta === 0 ? 'igual que' : 'puntos respecto a'} ${R.previo}
+        <span class="num">(${previo.pct}%)</span></div>` : ''}
+      ${r.deb ? `<div class="barra" style="margin-top:12px"><i style="width:${r.pct}%"></i></div>` : ''}
     </div>
 
     <div class="rejilla">
-      <div class="mini"><b class="num">${r.hec}</b><small>cumplidos</small></div>
-      <div class="mini"><b class="num">${Math.max(0, r.deb - r.hec)}</b>
-        <small>${r.deb - r.hec === 1 ? 'te queda' : 'te quedan'} por cumplir</small></div>
-      <div class="mini"><b class="num">${r.completos}</b><small>hábitos al 100%</small></div>
-      <div class="mini"><b class="num">${r.extras ? '+' + r.extras : '0'}</b>
-        <small>sesiones fuera de plan</small></div>
+      ${minis.map(([v, t]) => `<div class="mini"><b class="num">${v}</b><small>${t}</small></div>`).join('')}
     </div>
-    ${r.fuera ? `<p class="pieNota">${r.fuera} hábito${r.fuera === 1 ? '' : 's'} de periodo más
-      largo que esta ventana; ${r.fuera === 1 ? 'aparece' : 'aparecen'} en Mes o en Año.</p>` : ''}
+
+    ${serie.some(x => x.pct !== null) ? `<div class="panel">
+      <div style="font-size:15px;color:var(--muted)">${
+        R.sub === 'dia' ? 'Día a día' : R.sub === 'semana' ? 'Semana a semana' : 'Mes a mes'}</div>
+      ${grafSerie(serie)}
+    </div>` : ''}
+
+    ${r.mejor ? `<div class="panel" style="padding:15px">
+      <div class="racha" style="margin:0">
+        Lo que mejor llevas: <b>${escapar(r.mejor.h.nombre)}</b> al ${r.mejor.pct}%${
+        r.peor && r.peor.pct < r.mejor.pct
+          ? `. Lo que más se te resiste: <b>${escapar(r.peor.h.nombre)}</b> al ${r.peor.pct}%.` : '.'}
+      </div></div>` : ''}
 
     ${logros.length ? `<div class="etiqueta">Acumulado ${R.etq}</div>
       ${logros.map(f => `<div class="logro" style="border-left-color:${colorDe(f.h)}">
         <span class="logroEmo">${f.h.emo || '•'}</span>
         <span>${escapar(f.h.nombre)}</span>
         <b class="num">${escapar(acumulado(f.h, f.suma))}</b></div>`).join('')}` : ''}
+
+    ${r.fuera ? `<p class="pieNota">${r.fuera} hábito${r.fuera === 1 ? '' : 's'} de periodo más
+      largo que esta ventana; ${r.fuera === 1 ? 'aparece' : 'aparecen'} en Mes o en Año.</p>` : ''}
 
     <div class="etiqueta">Por hábito</div>
     ${r.filas.length ? r.filas.slice().sort((a,b) => (b.pct ?? -1) - (a.pct ?? -1)).map(f => {
@@ -286,7 +325,8 @@ function pintarResumen(c) {
           <div class="punto" style="background:${col}22;color:${col}">${f.h.emo || '•'}</div>
           <div class="hab-nom"><b>${escapar(f.h.nombre)}</b>
             <small>${f.debidos ? `${f.hechos} de ${f.debidos}` : 'sin periodos que cumplir'}${
-              f.extras ? ` · +${f.extras} extra` : ''}</small></div>
+              f.extras ? ` · +${f.extras} extra` : ''}${
+              f.h.tipo !== 'sino' && f.suma ? ` · ${escapar(acumulado(f.h, f.suma))}` : ''}</small></div>
           <div class="imp num">${f.pct === null ? '—' : f.pct + '%'}</div>
         </div>
         <div class="barra"><i style="width:${f.pct ?? 0}%;background:${col}"></i></div>
@@ -302,7 +342,7 @@ function pintarResumen(c) {
           <div class="hab-cab">
             <div class="punto" style="background:${col}22;color:${col}">${f.h.emo || '•'}</div>
             <div class="hab-nom"><b>${escapar(f.h.nombre)}</b>
-              <small>${f.veces} ${f.veces === 1 ? 'registro' : 'registros'} ${RANGOS[resSeg].etq}</small></div>
+              <small>${f.veces} ${f.veces === 1 ? 'registro' : 'registros'} ${R.etq}</small></div>
             <div class="imp num">${f.h.tipo === 'sino' ? f.veces : escapar(acumulado(f.h, f.suma))}</div>
           </div></div>`;
       }).join('')}` : ''}`;
@@ -311,6 +351,31 @@ function pintarResumen(c) {
     const b = e.target.closest('[data-r]'); if (!b) return;
     resSeg = b.dataset.r; pintarResumen(c);
   };
+}
+
+function mejorSub(serie) {
+  const conDatos = serie.filter(x => x.pct !== null && x.deb);
+  if (!conDatos.length) return null;
+  const top = conDatos.reduce((a, b) => b.pct > a.pct ? b : a);
+  return { ...top, etqLarga: top.etq };
+}
+
+function grafSerie(serie) {
+  const an = 100 / serie.length, ancho = an * 0.56;
+  return `<svg class="graf" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    ${serie.map((s, i) => {
+      const h = s.pct === null ? 0 : s.pct;
+      return `<rect x="${i*an + (an-ancho)/2}" y="${100-h}" width="${ancho}"
+        height="${Math.max(h, 1.2)}" fill="${s.pct === 100 ? 'var(--hogar)'
+          : s.futuro ? 'transparent' : 'var(--ink)'}"
+        opacity="${s.pct === null ? '.15' : s.pct >= 100 ? '1' : '.75'}"/>`;
+    }).join('')}
+  </svg>
+  <div style="display:flex;margin-top:8px">
+    ${serie.map(s => `<div style="flex:1;text-align:center;font-size:11px;line-height:1.5;
+      color:var(--muted)">${s.etq}<br><span class="num">${
+      s.pct === null ? '—' : s.pct + '%'}</span></div>`).join('')}
+  </div>`;
 }
 
 function pintarArchivados(c) {

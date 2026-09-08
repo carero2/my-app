@@ -44,8 +44,10 @@ de sobra este uso.
 - Presupuesto del mes y límites por categoría, combinables y ambos opcionales
 - Fecha y hora manuales, para efectivo o recibos atrasados
 - Listado por meses con filtro por categoría y edición al tocar
-- Métricas: variación frente al mes anterior, media diaria, día más caro,
+- Métricas del mes: variación frente al mes anterior, media diaria, día más caro,
   proyección a fin de mes, desglose por categoría y evolución de seis meses
+- Métricas del año: media mensual, mes más caro y más contenido, balance y tasa de
+  ahorro anual, gasto mes a mes y reparto por categoría con su media mensual
 - Importación desde CSV con detección de duplicados y autocategorización
 - Exportación a CSV
 - Gastos fijos que se registran solos cada mes
@@ -60,8 +62,8 @@ de sobra este uso.
 - Hábitos de solo seguimiento, que se registran pero no cuentan en el progreso del día
 - Registro retroactivo: tocar cualquier celda de la tira corrige ese periodo
 - Rachas, tira de progreso y resumen calculados sobre la periodicidad de cada hábito
-- Resumen por semana natural, mes o año, con porcentaje sobre lo que tocaba
-  y totales acumulados
+- Resumen por semana, mes o año, cada uno con sus propias métricas, gráfico de
+  subperiodos y comparación con el periodo anterior
 - Archivar en vez de borrar, conservando el historial
 
 **Notas**
@@ -335,7 +337,19 @@ marcados como solo seguimiento. Los semanales y mensuales quedan fuera: si conta
 círculo diría que vas al 50% un día 3 del mes por un objetivo que tienes hasta el día 30.
 La pestaña Hoy, por el mismo motivo, muestra solo los hábitos del día.
 
-**El resumen** se calcula sobre tres ventanas naturales: la semana en curso de lunes a
+**El resumen** tiene tres ventanas, y cada una destaca lo que en ella tiene sentido:
+
+| Ventana | Gráfico | Métricas propias |
+|---|---|---|
+| Semana | día a día, L–D | días redondos, cumplidos, lo que queda, sesiones extra |
+| Mes | semana a semana | días redondos, hábitos al 100%, cumplidos, extras |
+| Año | mes a mes | cumplidos del año, días redondos, mejor mes, hábitos al 100% |
+
+Un **día redondo** es un día ya transcurrido en el que se cumplió todo lo que tocaba ese día.
+Las tres ventanas comparan además con el periodo anterior en puntos porcentuales, y señalan
+el hábito que mejor llevas y el que más se te resiste.
+
+Las ventanas se calculan sobre tres periodos naturales: la semana en curso de lunes a
 domingo, el mes del día 1 al último, y el año completo. El porcentaje es cumplidos entre
 *lo que tocaba hasta hoy*, no entre el rango entero: un miércoles con dos entrenamientos
 de tres días transcurridos marca 67%, no 29%. Los periodos aún no transcurridos no
