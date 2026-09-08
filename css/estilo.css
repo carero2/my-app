@@ -150,6 +150,7 @@ ul.filas li:first-child{border-top:0}
 .mini small{color:var(--muted);font-size:13px}
 .filaCat{display:grid;grid-template-columns:1fr auto;gap:3px 10px;margin-top:14px;font-size:15px}
 .filaCat .pct{color:var(--muted);font-size:13px}
+.filaCat .tope{color:var(--muted);font-size:12px;font-weight:400}
 .filaCat .barra{grid-column:1/-1}
 svg.graf{width:100%;height:110px;overflow:visible;margin-top:10px;display:block}
 

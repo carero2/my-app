@@ -41,7 +41,7 @@ de sobra este uso.
 - Teclado numérico propio para registrar un gasto en dos segundos
 - Categorías editables desde la app: nombre, emoji, color y orden
 - Ingresos además de gastos, con balance y tasa de ahorro
-- Presupuesto mensual opcional: un tope único, o un límite por cada categoría
+- Presupuesto del mes y límites por categoría, combinables y ambos opcionales
 - Fecha y hora manuales, para efectivo o recibos atrasados
 - Listado por meses con filtro por categoría y edición al tocar
 - Métricas: variación frente al mes anterior, media diaria, día más caro,
@@ -270,11 +270,19 @@ pero sus movimientos la conservan. Sin movimientos, se borra con opción de desh
 movimiento apunta a una categoría que ya no existe, se sigue mostrando con su nombre en vez
 de convertirse en «Otros».
 
-**Presupuesto.** En Ajustes puedes elegir entre un **tope total** para el mes o un
-**límite por categoría**. En el segundo caso, el tope del mes es la suma de los límites que
-definas, y las categorías sin límite quedan sin controlar. Las que se pasan aparecen en rojo
-en Métricas, en la cinta de Finanzas y en la pestaña Hoy. Cambiar de modo no borra la
-configuración del otro: puedes volver al tope total y seguirá guardado.
+**Presupuesto.** Hay dos niveles independientes y compatibles, los dos opcionales:
+
+- **Presupuesto del mes**: un tope para todo el gasto mensual. Alimenta la barra de la cinta
+  de Finanzas y el panel de la pestaña Hoy.
+- **Límite por categoría**: un tope propio para las categorías que quieras.
+
+En Métricas, cada categoría se mide contra la referencia que le corresponde. Si tiene límite
+propio, el porcentaje es sobre ese límite y verás «quedan 120 €» o «40 € de más» en rojo. Si
+no lo tiene, el porcentaje es sobre el presupuesto del mes, y si tampoco hay presupuesto,
+sobre el gasto total del mes.
+
+Las categorías que superan su límite salen en rojo también en la cinta de Finanzas y en Hoy.
+Ajustes avisa si la suma de los límites por categoría se pasa del presupuesto del mes.
 
 **Editar o borrar un movimiento:** en *Movimientos*, tócalo para editarlo o pulsa la ✕ para
 borrarlo. Sale un aviso con **Deshacer** durante seis segundos.
@@ -451,9 +459,8 @@ vida.gastos  vida.habitos  vida.registros  vida.notas
 vida.cola.<colección>      ids borrados pendientes de subir
 vida.nube                  { url, clave }
 vida.ajuste.catsSembradas    true una vez creadas las categorías iniciales
-vida.ajuste.presupuesto       número, tope mensual único
-vida.ajuste.modoPresupuesto  'total' | 'categorias'
-vida.ajuste.presupuestos     { categoría: tope } cuando el modo es por categoría
+vida.ajuste.presupuesto      número, presupuesto del mes
+vida.ajuste.presupuestos     { categoría: tope } límites por categoría
 vida.ajuste.crono          { hab, inicio }
 vida.ajuste.coloresGrupo   { grupo: color } — caché; el color viaja en cada hábito
 vida.ajuste.coloresNota    { categoría: color } — caché; el color viaja en cada nota

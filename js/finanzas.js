@@ -59,19 +59,18 @@ export const delMes = off => {
 };
 export const gastado = off => delMes(off).filter(g => !esIngreso(g)).reduce((s,g) => s + g.c, 0);
 export const ingresado = off => delMes(off).filter(esIngreso).reduce((s,g) => s + g.c, 0);
-/* El presupuesto puede fijarse como un tope mensual único o categoría a categoría.
-   En el segundo caso, el tope del mes es la suma de los topes definidos. */
-export const modoPresu     = () => ajuste('modoPresupuesto') || 'total';
-export const presupuestos  = () => ajuste('presupuestos') || {};
-export const topeCat       = id => presupuestos()[id] || 0;
-export const presupuesto = () => modoPresu() === 'categorias'
-  ? Object.values(presupuestos()).reduce((s, v) => s + (Number(v) || 0), 0)
-  : (ajuste('presupuesto') || 0);
+/* Dos niveles independientes y compatibles: un presupuesto para todo el mes y,
+   opcionalmente, un límite propio para cada categoría. */
+export const presupuesto  = () => ajuste('presupuesto') || 0;
+export const presupuestos = () => ajuste('presupuestos') || {};
+export const topeCat      = id => presupuestos()[id] || 0;
+export const sumaTopes    = () =>
+  Object.values(presupuestos()).reduce((s, v) => s + (Number(v) || 0), 0);
 export const gastadoCat = (id, off = 0) =>
   delMes(off).filter(g => g.cat === id && !esIngreso(g)).reduce((s,g) => s + g.c, 0);
-/** Categorías que ya han superado su tope este mes. */
-export const excedidas = (off = 0) => modoPresu() !== 'categorias' ? []
-  : cats().filter(c => topeCat(c.id) && gastadoCat(c.id, off) > topeCat(c.id));
+/** Categorías que ya han superado su propio límite este mes. */
+export const excedidas = (off = 0) =>
+  cats().filter(c => topeCat(c.id) && gastadoCat(c.id, off) > topeCat(c.id));
 
 /* ---------- Estado del módulo ---------- */
 let sub = 'anadir', off = 0, filtro = null;
@@ -315,10 +314,12 @@ function pintarMetricas(c) {
   gs.filter(g => !esIngreso(g)).forEach(g => { const k = dia(g.t); porDia[k] = (porDia[k]||0) + g.c });
   const top = Object.entries(porDia).sort((a,b) => b[1]-a[1])[0];
 
-  const porCats = modoPresu() === 'categorias';
+  /* Cada categoría se mide contra su propio límite; si no tiene, contra el
+     presupuesto del mes, y si tampoco lo hay, contra el gasto total. */
+  const referencia = presu || total;
   const porCat = catsTodas().map(x => ({...x,
       s: gs.filter(g => g.cat===x.id && !esIngreso(g)).reduce((s,g) => s+g.c, 0),
-      tope: porCats ? topeCat(x.id) : 0 }))
+      tope: topeCat(x.id) }))
     .filter(x => x.s > 0 || x.tope > 0)
     .sort((a,b) => b.s - a.s);
   const pasadas = porCat.filter(x => x.tope && x.s > x.tope).length;
@@ -357,16 +358,20 @@ function pintarMetricas(c) {
       <div style="font-size:15px;color:var(--muted)">En qué se te va${
         pasadas ? ` · <span class="rojo">${pasadas} categoría${pasadas===1?'':'s'} pasada${
           pasadas===1?'':'s'}</span>` : ''}</div>
+      <div class="pieNota" style="padding:2px 0 0">Las categorías sin límite propio se miden
+        sobre ${presu ? 'el presupuesto del mes' : 'el gasto total'}.</div>
       ${porCat.map(x => {
-        const rel = x.tope ? Math.min(x.s / x.tope, 1) * 100 : (total ? (x.s/total)*100 : 0);
+        const base = x.tope || referencia;
+        const rel = base ? Math.min(x.s / base, 1) * 100 : 0;
         const mal = x.tope && x.s > x.tope;
         return `<div class="filaCat">
-          <span>${x.emo} ${x.nom}</span><span class="num">${eur(x.s)}</span>
+          <span>${x.emo} ${x.nom}${x.tope ? ` <small class="tope num">de ${eur0(x.tope)}</small>` : ''}</span>
+          <span class="num">${eur(x.s)}</span>
           <div class="barra"><i class="${mal ? 'pasado' : ''}"
             style="width:${rel}%;background:${mal ? '' : color(x.id)}"></i></div>
           <span class="pct num ${mal ? 'rojo' : ''}">${x.tope
             ? (mal ? `${eur0(x.s - x.tope)} de más` : `quedan ${eur0(x.tope - x.s)}`)
-            : ((x.s/total)*100).toFixed(0) + '%'}</span>
+            : base ? ((x.s/base)*100).toFixed(0) + '%' : '—'}</span>
         </div>`;
       }).join('')}
     </div>
