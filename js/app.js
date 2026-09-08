@@ -4,7 +4,7 @@
 import { alCambiar, sincronizar, ultimaSync } from './nucleo.js';
 import * as hoy from './hoy.js';
 import * as finanzas from './finanzas.js';
-import * as habitos from './habitos.js';
+import * as habitos from './habitos-ui.js';
 import * as notas from './notas.js';
 import * as ajustes from './ajustes.js';
 
@@ -37,6 +37,8 @@ alCambiar(() => pintar());
 
 /* Las ocho categorías de siempre se crean la primera vez que se abre la app. */
 finanzas.sembrarCategorias();
+/* Los gastos fijos cuyo día ya ha llegado se registran solos. */
+finanzas.generarFijos();
 
 /* Parámetros de URL, para los atajos:  ?ver=finanzas  ·  ?add=1  ·  ?cat=comida */
 const p = new URLSearchParams(location.search);

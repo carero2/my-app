@@ -4,6 +4,7 @@
 import { datos, eur, eur0, dia, nombreMes } from './nucleo.js';
 import * as fin from './finanzas.js';
 import * as hab from './habitos.js';
+import * as habUI from './habitos-ui.js';
 
 export function pintar(vista, ir) {
   const hoy = new Date();
@@ -35,6 +36,8 @@ export function pintar(vista, ir) {
         <div class="delta">${mes <= presu ? `Te quedan ${eur0(presu-mes)} este mes`
           : `Has pasado el presupuesto en ${eur0(mes-presu)}`}</div>`
         : '<div class="delta">Sin presupuesto definido</div>'}
+      ${fin.excedidas().length ? `<div class="delta rojo">${fin.excedidas()
+        .map(c => c.emo + ' ' + c.nom).join(', ')} por encima del límite</div>` : ''}
     </div>
 
     <div class="etiqueta">Hábitos${delDia.length ? ` · ${hechos} de ${delDia.length} hoy` : ''}</div>
@@ -47,11 +50,11 @@ export function pintar(vista, ir) {
   if (!lista.length) {
     caja.innerHTML = `<p class="vacio">Sin hábitos todavía.
       <button id="crearHab">Crear uno</button></p>`;
-    caja.querySelector('#crearHab').onclick = () => hab.hojaHabito(null);
+    caja.querySelector('#crearHab').onclick = () => habUI.hojaHabito(null);
     return;
   }
-  caja.innerHTML = lista.map(hab.tarjeta).join('');
-  hab.conectar(caja);
+  caja.innerHTML = lista.map(habUI.tarjeta).join('');
+  habUI.conectar(caja);
 }
 
 const saludo = d => {

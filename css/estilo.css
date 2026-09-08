@@ -77,7 +77,7 @@ input,select,textarea{font:inherit;color:inherit}
 .campo{display:block!important}
 .campo span{display:block;font-size:13px;color:var(--muted);margin-bottom:3px}
 .rojo{color:var(--alerta)} .acento{color:var(--transporte);font-weight:500}
-.pieNota{color:var(--muted);font-size:13px;line-height:1.55;padding:14px 4px 0}
+.pieNota{color:var(--muted);font-size:13.5px;line-height:1.55;padding:14px 4px 0}
 .estado{font-size:13px;color:var(--muted);padding:8px 4px 0;line-height:1.5}
 .vacio{text-align:center;color:var(--muted);padding:46px 20px;line-height:1.6}
 .vacio button{color:var(--transporte);font-weight:500;display:block;margin:12px auto 0}
@@ -204,6 +204,30 @@ svg.graf{width:100%;height:110px;overflow:visible;margin-top:10px;display:block}
 .filaCat2 .txt small{color:var(--muted);font-size:13px}
 .filaCat2 button{color:var(--muted);padding:6px 10px;font-size:17px}
 .filaCat2.archivada{opacity:.55}
+.filaCat2 b.num{font-weight:600;letter-spacing:-.01em}
+
+/* Índice de ajustes */
+.grupo.indice > button{gap:10px}
+.grupo.indice > button span{flex:1;min-width:0}
+.grupo.indice > button small{color:var(--muted);font-size:14px;flex:none;white-space:nowrap}
+
+/* Buscador */
+.buscador{padding:10px 0 2px}
+.buscador input{width:100%;padding:11px 15px;background:var(--card);border:1px solid var(--line);
+  border-radius:12px;font-size:16px;-webkit-appearance:none}
+.buscador input::-webkit-search-cancel-button{-webkit-appearance:none;height:16px;width:16px;
+  background:var(--muted);mask:radial-gradient(circle,#000 60%,transparent 61%);cursor:pointer}
+
+/* Marca de gasto fijo */
+.fijo{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);background:var(--hueco);padding:2px 6px;border-radius:5px;
+  vertical-align:1px;margin-left:5px}
+
+/* Vista de lectura de una nota */
+.leerCab{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.leerCab small{color:var(--muted);font-size:13px}
+.leerTexto{font-size:16px;line-height:1.6;white-space:normal;
+  max-height:52vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .opciones.dias button{min-width:42px;text-align:center;padding:9px 0}
 .hab.hecho .hab-nom b{opacity:.55}
 .hab.hecho{background:linear-gradient(var(--card),var(--card))}

@@ -48,6 +48,8 @@ de sobra este uso.
   proyección a fin de mes, desglose por categoría y evolución de seis meses
 - Importación desde CSV con detección de duplicados y autocategorización
 - Exportación a CSV
+- Gastos fijos que se registran solos cada mes
+- Búsqueda por concepto, categoría o importe
 
 **Hábitos**
 - Grupos definidos por el usuario que funcionan como submódulos (trabajo, sueño…),
@@ -65,6 +67,7 @@ de sobra este uso.
 **Notas**
 - Título, categoría y texto libre
 - Las categorías funcionan como submódulos, cada una con su color
+- Vista de lectura aparte de la de edición, y búsqueda en título y texto
 
 **Generales**
 - Funciona sin conexión, incluida la escritura
@@ -270,6 +273,20 @@ pero sus movimientos la conservan. Sin movimientos, se borra con opción de desh
 movimiento apunta a una categoría que ya no existe, se sigue mostrando con su nombre en vez
 de convertirse en «Otros».
 
+**Gastos fijos.** En Ajustes → *Gastos fijos* defines concepto, importe, categoría y día del
+mes. Cada vez que abres la app se registran los que ya tocaban y no se habían creado todavía,
+como un movimiento normal marcado con la etiqueta «fijo». Puedes editarlos o borrarlos
+después uno a uno, y pausar la plantilla sin perder el histórico. El día máximo es 28 para
+que exista en todos los meses.
+
+Separarlos mejora la proyección a fin de mes: los fijos no se promedian por día, se suman
+enteros una sola vez. Con 750 € de alquiler el día 1 y 10 € diarios, a mitad de mes la
+proyección ingenua decía 1.800 € y la real son 1.050 €.
+
+**Buscar.** En Movimientos, el buscador filtra por concepto, categoría o importe, y mientras
+escribes ignora el mes seleccionado: busca en todo el histórico. En Notas busca en el título
+y en el texto.
+
 **Presupuesto.** Hay dos niveles independientes y compatibles, los dos opcionales:
 
 - **Presupuesto del mes**: un tope para todo el gasto mensual. Alimenta la barra de la cinta
@@ -402,7 +419,7 @@ fecha;importe;categoria;nota;tipo
 
 ## Modelo de datos
 
-Cinco colecciones. Todos los items comparten `id` (identificador único) y `t` (marca de
+Seis colecciones. Todos los items comparten `id` (identificador único) y `t` (marca de
 tiempo en milisegundos). El campo `pend` es local: marca lo que aún no ha subido y nunca
 se envía al servidor.
 
@@ -442,6 +459,13 @@ si vuelves a la periodicidad original.
 ```js
 { id: 'comida', t, nom: 'Comida', emo: '🍽', color: '#C7513F', orden: 0, archivada: false }
 ```
+
+**fijos** — plantillas de gasto recurrente
+```js
+{ id, t, nom: 'Alquiler', c: 750, cat: 'hogar', diaMes: 1, activo: true, ultimo: '2026-09' }
+```
+El campo `ultimo` guarda el mes en que se generó por última vez, para no duplicar.
+Los movimientos que crean llevan `fijo` con el id de su plantilla.
 
 **notas**
 ```js
@@ -553,6 +577,11 @@ npx serve
 
 Y abre `http://localhost:8000`.
 
+Las escrituras individuales guardan, repintan y sincronizan al momento. Para operaciones
+masivas (importar un CSV, borrar todo, reordenar) hay que envolverlas en `enLote()` del
+núcleo, que aplaza todo eso al final: sin ella, importar 300 movimientos lanzaba 300
+peticiones al Worker y 300 repintados.
+
 **Al desplegar un cambio, sube el número de caché en `sw.js`:**
 
 ```js
@@ -622,7 +651,7 @@ o simplemente comprueba desde el navegador.
 
 - Gastos recurrentes marcados como fijos, para separarlos de los variables en la proyección
 - Cruzar módulos: comparar gasto con cumplimiento de hábitos
-- Búsqueda en notas
+- Aviso en la app cuando hay una versión nueva publicada
 - Reordenar hábitos arrastrando en lugar de con botones
 - Vista de calendario mensual por hábito, para ver huecos de un vistazo
 - Rotar la clave sin tener que actualizarla a mano en cada dispositivo

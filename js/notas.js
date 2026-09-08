@@ -4,7 +4,7 @@
    convierten en los submódulos de la pestaña.
    ========================================================================== */
 import {
-  datos, anadir, actualizar, borrar, restaurar, ajuste,
+  datos, anadir, actualizar, borrar, restaurar, ajuste, enLote,
   escapar, avisar, abrirHoja, cerrarHoja, emitir,
 } from './nucleo.js';
 
@@ -23,20 +23,25 @@ export function colorCat(c) {
 }
 export function fijarColorCat(c, col) {
   ajuste('coloresNota', { ...(ajuste('coloresNota') || {}), [c]: col });
-  datos.notas.filter(n => (n.cat || 'General') === c && n.color !== col)
-    .forEach(n => actualizar('notas', n.id, { color: col }));
+  enLote(() => datos.notas.filter(n => (n.cat || 'General') === c && n.color !== col)
+    .forEach(n => actualizar('notas', n.id, { color: col })));
 }
 
 const porFecha = (a, b) => (b.m || b.t) - (a.m || a.t);
 export const categorias = () =>
   [...new Set(datos.notas.map(n => n.cat || 'General'))].sort();
 
-let catSel = null;
+let catSel = null, busca = '';
 
 export function pintar(vista) {
   const cats = categorias();
   if (catSel && !cats.includes(catSel)) catSel = null;
-  const lista = datos.notas.filter(n => !catSel || (n.cat || 'General') === catSel).sort(porFecha);
+  const q = busca.trim().toLowerCase();
+  const lista = datos.notas
+    .filter(n => q
+      ? (n.titulo || '').toLowerCase().includes(q) || (n.texto || '').toLowerCase().includes(q)
+      : (!catSel || (n.cat || 'General') === catSel))
+    .sort(porFecha);
 
   vista.innerHTML = `<div class="scroll">
     <div class="segmentos envuelve">
@@ -47,7 +52,20 @@ export function pintar(vista) {
           : `border-color:${col}66`}"><i class="pinta" style="background:${col}"></i>${escapar(c)}</button>` }).join('')}
     </div>
     <div class="acciones"><button class="accion nuevo" data-c="+">+ Nota</button></div>
+    <div class="buscador">
+      <input id="buscarNota" type="search" placeholder="Buscar en títulos y texto"
+        value="${escapar(busca)}" autocapitalize="off" autocorrect="off">
+    </div>
     <div id="notasCuerpo"></div></div>`;
+
+  const inp = vista.querySelector('#buscarNota');
+  inp.oninput = e => {
+    busca = e.target.value;
+    const pos = e.target.selectionStart;
+    pintar(vista);
+    const nuevo = vista.querySelector('#buscarNota');
+    nuevo.focus(); nuevo.setSelectionRange(pos, pos);
+  };
 
   vista.querySelector('.scroll').addEventListener('click', e => {
     const b = e.target.closest('.seg[data-c], .accion[data-c]'); if (!b) return;
@@ -59,9 +77,11 @@ export function pintar(vista) {
   const cuerpo = vista.querySelector('#notasCuerpo');
   if (!lista.length) {
     cuerpo.innerHTML = `<p class="vacio">
-      ${datos.notas.length ? 'No hay notas en esta categoría.' : 'Todavía no has escrito ninguna nota.'}
-      <button id="crear">Escribir una</button></p>`;
-    cuerpo.querySelector('#crear').onclick = () => hojaNota(null);
+      ${q ? 'Nada coincide con «' + escapar(busca) + '».'
+          : datos.notas.length ? 'No hay notas en esta categoría.'
+          : 'Todavía no has escrito ninguna nota.'}
+      ${q ? '' : '<button id="crear">Escribir una</button>'}</p>`;
+    cuerpo.querySelector('#crear')?.addEventListener('click', () => hojaNota(null));
     return;
   }
 
@@ -79,12 +99,37 @@ export function pintar(vista) {
 
   cuerpo.onclick = e => {
     const caja = e.target.closest('[data-id]'); if (!caja) return;
-    hojaNota(datos.notas.find(n => n.id === caja.dataset.id));
+    hojaLeer(datos.notas.find(n => n.id === caja.dataset.id));
   };
+}
+
+/** Vista de lectura: el texto completo, sin caja de edición. */
+export function hojaLeer(n) {
+  if (!n) return;
+  const col = colorCat(n.cat || 'General');
+  abrirHoja(`
+    <h3 style="margin-bottom:6px">${escapar(n.titulo || 'Sin título')}</h3>
+    <div class="leerCab">
+      <span class="nota-cat" style="background:${col}1f;color:${col}">${escapar(n.cat || 'General')}</span>
+      <small>${new Date(n.m || n.t).toLocaleDateString('es-ES',
+        {day:'numeric', month:'long', year:'numeric'})}</small>
+    </div>
+    <div class="leerTexto">${n.texto
+      ? escapar(n.texto).replace(/\n/g, '<br>')
+      : '<i style="color:var(--muted)">Sin texto</i>'}</div>
+    <div class="fila">
+      <button id="lCerrar">Cerrar</button>
+      <button class="ok" id="lEditar">Editar</button>
+    </div>`,
+  caja => {
+    caja.querySelector('#lCerrar').onclick = cerrarHoja;
+    caja.querySelector('#lEditar').onclick = () => { cerrarHoja(); hojaNota(n) };
+  });
 }
 
 export function hojaNota(n) {
   const nueva = !n;
+  const guardadoRef = { hecho: false };
   const d = n || { titulo:'', cat: catSel || '', texto:'' };
   abrirHoja(`
     <h3>${nueva ? 'Nueva nota' : 'Editar nota'}</h3>
@@ -143,9 +188,13 @@ export function hojaNota(n) {
       const col = color || (existe() ? colorCat(cat) : siguiente());
       fijarColorCat(cat, col);
       const campos = { titulo, texto, cat, color: col, m: Date.now() };
+      guardadoRef.hecho = true;
       nueva ? anadir('notas', campos) : actualizar('notas', n.id, campos);
       cerrarHoja(); emitir();
       avisar(nueva ? 'Nota creada' : 'Nota guardada');
     };
-  });
+  },
+  { sucio: () => !guardadoRef.hecho &&
+      ((document.getElementById('nTit')?.value.trim() || '') !== (d.titulo || '') ||
+       (document.getElementById('nTxt')?.value.trim() || '') !== (d.texto || '')) });
 }

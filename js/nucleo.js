@@ -3,7 +3,7 @@
    Cada módulo importa de aquí; nadie habla con localStorage directamente.
    ========================================================================== */
 
-export const COLECCIONES = ['gastos', 'habitos', 'registros', 'notas', 'categorias'];
+export const COLECCIONES = ['gastos', 'habitos', 'registros', 'notas', 'categorias', 'fijos'];
 
 const K = {
   datos:  c => 'vida.' + c,
@@ -59,8 +59,6 @@ export function etiquetaPeriodo(frec, clave) {
     return new Date(a, m-1, 1).toLocaleDateString('es-ES', {month:'short'}).replace('.',''); }
   return desdeDia(clave).toLocaleDateString('es-ES', {day:'numeric', month:'short'});
 }
-export const NOMBRE_FREC = { dia:'día', semana:'semana', mes:'mes' };
-
 export const inicioMes = off => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth()+off, 1) };
 export const finMes    = off => new Date(inicioMes(off+1).getTime() - 1);
 export const nombreMes = off => inicioMes(off)
@@ -101,30 +99,46 @@ export function guardar(...cols) {
   refrescarGlobo();
 }
 
+/* Una escritura suelta guarda, repinta y sincroniza al momento. Dentro de
+   enLote() todo eso se aplaza al final: importar 300 movimientos hacía 300
+   peticiones al Worker y 300 repintados completos de la pantalla. */
+let lote = 0;
+const loteCols = new Set();
+function tocado(col) {
+  if (lote) { loteCols.add(col); return }
+  guardar(col); emitir(); sincronizar();
+}
+export function enLote(fn) {
+  lote++;
+  try { return fn() }
+  finally {
+    if (--lote === 0 && loteCols.size) {
+      const cols = [...loteCols];
+      loteCols.clear();
+      guardar(...cols); emitir(); sincronizar();
+    }
+  }
+}
+
 export function anadir(col, item) {
   const nuevo = { id: uid(), t: Date.now(), ...item, pend: true };
   datos[col].push(nuevo);
-  guardar(col); emitir(); sincronizar();
+  tocado(col);
   return nuevo;
 }
 export function actualizar(col, id, cambios) {
   const it = datos[col].find(x => x.id === id);
   if (!it) return null;
   Object.assign(it, cambios, { pend: true });
-  guardar(col); emitir(); sincronizar();
+  tocado(col);
   return it;
-}
-/** Inserta o actualiza según exista el id. Útil para los registros diarios. */
-export function poner(col, item) {
-  const existe = datos[col].find(x => x.id === item.id);
-  return existe ? actualizar(col, item.id, item) : anadir(col, item);
 }
 export function borrar(col, id) {
   const it = datos[col].find(x => x.id === id);
   if (!it) return null;
   datos[col] = datos[col].filter(x => x.id !== id);
   if (nube && !it.pend) cola[col].push(id);   // lo que nunca subió no necesita lápida
-  guardar(col); emitir(); sincronizar();
+  tocado(col);
   return it;
 }
 /** Devuelve a la vida un item borrado, para el botón Deshacer.
@@ -133,7 +147,7 @@ export function borrar(col, id) {
 export function restaurar(col, item) {
   cola[col] = cola[col].filter(x => x !== item.id);
   datos[col].push({ ...item, id: uid(), pend: true });
-  guardar(col); emitir(); sincronizar();
+  tocado(col);
 }
 
 /* ---------- Sincronización ---------- */
@@ -208,14 +222,11 @@ export async function sincronizar({ ruidoso = false } = {}) {
               : e.message.startsWith('http') ? 'El servidor respondió ' + e.message.slice(5)
               : 'No se pudo conectar';
     if (ruidoso) avisar(msg);
-    ultimoError = msg;
   } finally {
     sincronizando = false;
     refrescarGlobo();
   }
 }
-export let ultimoError = null;
-
 function refrescarGlobo() {
   const g = document.getElementById('globoPend');
   if (g) g.classList.toggle('on', !!nube && pendientes() > 0);
@@ -237,20 +248,32 @@ export function avisar(texto, accion) {
 }
 
 /* ---------- Hoja modal ---------- */
-export function abrirHoja(html, alMontar) {
+let vigilarSalida = null;
+/** opciones.sucio: función que devuelve true si hay cambios sin guardar.
+ *  En ese caso, tocar fuera o pulsar Escape pide confirmación. */
+export function abrirHoja(html, alMontar, opciones = {}) {
   const fondo = document.getElementById('hoja');
   const caja  = document.getElementById('hojaCaja');
   caja.innerHTML = html;
   fondo.classList.add('on');
   fondo.setAttribute('aria-hidden', 'false');
-  fondo.onclick = e => { if (e.target === fondo) cerrarHoja() };
+  vigilarSalida = opciones.sucio || null;
+  fondo.onclick = e => { if (e.target === fondo) intentarCerrar() };
+  document.addEventListener('keydown', teclaHoja);
   alMontar?.(caja);
+}
+function teclaHoja(e) { if (e.key === 'Escape') intentarCerrar() }
+function intentarCerrar() {
+  if (vigilarSalida?.() && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')) return;
+  cerrarHoja();
 }
 export function cerrarHoja() {
   const fondo = document.getElementById('hoja');
   fondo.classList.remove('on');
   fondo.setAttribute('aria-hidden', 'true');
   document.getElementById('hojaCaja').innerHTML = '';
+  document.removeEventListener('keydown', teclaHoja);
+  vigilarSalida = null;
 }
 
 /* ---------- Navegación por mes, reutilizada por varios módulos ---------- */

@@ -1,9 +1,10 @@
-const CACHE = 'myapp-v11';
+const CACHE = 'myapp-v12';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './css/estilo.css',
   './js/app.js', './js/nucleo.js', './js/hoy.js',
-  './js/finanzas.js', './js/habitos.js', './js/notas.js', './js/ajustes.js',
+  './js/finanzas.js', './js/habitos.js', './js/habitos-ui.js',
+  './js/notas.js', './js/ajustes.js',
   './icons/icon-192.png',
 ];
 

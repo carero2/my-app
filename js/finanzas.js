@@ -2,7 +2,7 @@
    Módulo Finanzas: añadir, listado y métricas.
    ========================================================================== */
 import {
-  datos, anadir, actualizar, borrar, restaurar, ajuste, nube, uid,
+  datos, anadir, actualizar, borrar, restaurar, ajuste, nube, enLote,
   eur, eur0, escapar, dia, inicioMes, finMes, nombreMes, navMes,
   avisar, abrirHoja, cerrarHoja, emitir,
 } from './nucleo.js';
@@ -25,9 +25,9 @@ export const PALETA_CAT = ['#C7513F','#3E6FA8','#8C8378','#D98A2B','#4E8A5B','#7
 
 export function sembrarCategorias() {
   if (ajuste('catsSembradas')) return;
-  SEMILLA.forEach((c, i) => {
+  enLote(() => SEMILLA.forEach((c, i) => {
     if (!datos.categorias.some(x => x.id === c.id)) anadir('categorias', { ...c, orden: i });
-  });
+  }));
   ajuste('catsSembradas', true);
 }
 
@@ -72,9 +72,126 @@ export const gastadoCat = (id, off = 0) =>
 export const excedidas = (off = 0) =>
   cats().filter(c => topeCat(c.id) && gastadoCat(c.id, off) > topeCat(c.id));
 
+/* ==========================================================================
+   Gastos fijos
+   Se generan solos una vez al mes, el día indicado. Quedan marcados con el
+   identificador de su plantilla para poder distinguirlos en las métricas.
+   ========================================================================== */
+export const fijos = () => [...datos.fijos].sort((a,b) => (a.diaMes||1) - (b.diaMes||1));
+export const totalFijos = (off = 0) =>
+  delMes(off).filter(g => g.fijo && !esIngreso(g)).reduce((s,g) => s + g.c, 0);
+
+/** Crea los movimientos de este mes cuyo día ya haya llegado. */
+export function generarFijos() {
+  const hoy = new Date();
+  const mesAct = dia().slice(0, 7);
+  const pendientes = datos.fijos.filter(f =>
+    f.activo !== false && f.ultimo !== mesAct && (f.diaMes || 1) <= hoy.getDate());
+  if (!pendientes.length) return 0;
+  enLote(() => pendientes.forEach(f => {
+    const cuando = new Date(hoy.getFullYear(), hoy.getMonth(), Math.min(f.diaMes || 1, 28), 12);
+    anadir('gastos', { c: f.c, cat: f.cat, n: f.nom, tipo: f.tipo || 'gasto',
+                       t: cuando.getTime(), fijo: f.id });
+    actualizar('fijos', f.id, { ultimo: mesAct });
+  }));
+  return pendientes.length;
+}
+
+export function hojaFijos() {
+  abrirHoja(`
+    <h3>Gastos fijos</h3>
+    <p class="pieNota" style="padding:0 0 6px">Se registran solos cada mes el día que indiques.
+      Puedes editarlos o borrarlos después como cualquier otro movimiento.</p>
+    <div id="listaFijos"></div>
+    <div class="fila"><button id="fjCerrar">Cerrar</button>
+      <button class="ok" id="fjNuevo">+ Nuevo</button></div>`,
+  caja => {
+    const pinta = () => {
+      const lista = fijos();
+      caja.querySelector('#listaFijos').innerHTML = lista.length ? lista.map(f => {
+        const c = cat(f.cat);
+        return `<div class="filaCat2 ${f.activo === false ? 'archivada' : ''}" data-id="${f.id}">
+          <span class="punto" style="background:${c.color}22;color:${c.color}">${c.emo}</span>
+          <span class="txt"><b>${escapar(f.nom)}</b>
+            <small>día ${f.diaMes || 1} de cada mes${f.activo === false ? ' · pausado' : ''}</small></span>
+          <b class="num">${eur(f.c)}</b>
+        </div>`;
+      }).join('') : '<p class="vacio" style="padding:24px">Ninguno todavía.</p>';
+    };
+    pinta();
+    caja.querySelector('#fjCerrar').onclick = cerrarHoja;
+    caja.querySelector('#fjNuevo').onclick = () => hojaFijo(null);
+    caja.querySelector('#listaFijos').onclick = e => {
+      const fila = e.target.closest('[data-id]');
+      if (fila) hojaFijo(datos.fijos.find(f => f.id === fila.dataset.id));
+    };
+  });
+}
+
+function hojaFijo(f) {
+  const nuevo = !f;
+  const d = f || { nom:'', c:'', cat: cats()[0]?.id || 'otros', diaMes:1, activo:true };
+  abrirHoja(`
+    <h3>${nuevo ? 'Nuevo gasto fijo' : 'Editar gasto fijo'}</h3>
+    <label><span>Concepto</span><input id="fNom" maxlength="40" value="${escapar(d.nom)}"
+      placeholder="Alquiler, Netflix, gimnasio…"></label>
+    <label><span>Importe</span><input id="fImp" type="number" inputmode="decimal" min="0" step="any"
+      value="${d.c || ''}" placeholder="0"></label>
+    <label><span>Categoría</span><select id="fCat">${cats().map(c =>
+      `<option value="${c.id}" ${c.id === d.cat ? 'selected' : ''}>${c.emo} ${c.nom}</option>`).join('')}</select></label>
+    <label><span>Día del mes</span><input id="fDia" type="number" inputmode="numeric" min="1" max="28"
+      value="${d.diaMes || 1}"></label>
+    <p class="pieNota" style="padding:6px 2px 0">El máximo es 28 para que exista en todos los meses.</p>
+    ${nuevo ? '' : `<div class="opciones" id="fEstado" style="margin-top:14px">
+      <button data-a="1" aria-pressed="${d.activo !== false}">Activo</button>
+      <button data-a="0" aria-pressed="${d.activo === false}">Pausado</button></div>`}
+    <div class="fila">
+      ${nuevo ? '' : '<button class="mal" id="fBorrar">Borrar</button>'}
+      <button id="fCancelar">Cancelar</button>
+      <button class="ok" id="fOk">${nuevo ? 'Crear' : 'Guardar'}</button>
+    </div>`,
+  caja => {
+    let activo = d.activo !== false;
+    const $ = x => caja.querySelector(x);
+    $('#fEstado')?.addEventListener('click', e => {
+      const b = e.target.closest('[data-a]'); if (!b) return;
+      activo = b.dataset.a === '1';
+      caja.querySelectorAll('#fEstado [data-a]').forEach(x =>
+        x.setAttribute('aria-pressed', (x.dataset.a === '1') === activo));
+    });
+    $('#fCancelar').onclick = () => { cerrarHoja(); hojaFijos() };
+    $('#fBorrar')?.addEventListener('click', () => {
+      const it = borrar('fijos', f.id);
+      cerrarHoja(); hojaFijos(); emitir();
+      avisar('Gasto fijo borrado', { texto:'Deshacer',
+        alPulsar: () => { restaurar('fijos', it); emitir() } });
+    });
+    $('#fOk').onclick = () => {
+      const nom = $('#fNom').value.trim();
+      const imp = parseFloat($('#fImp').value) || 0;
+      if (!nom) return avisar('Ponle un concepto');
+      if (imp <= 0) return avisar('El importe debe ser mayor que cero');
+      const campos = { nom, c: Math.round(imp*100)/100, cat: $('#fCat').value,
+                       diaMes: Math.min(28, Math.max(1, parseInt($('#fDia').value) || 1)), activo };
+      nuevo ? anadir('fijos', campos) : actualizar('fijos', f.id, campos);
+      cerrarHoja(); hojaFijos(); emitir();
+      avisar(nuevo ? 'Gasto fijo creado' : 'Guardado');
+      if (nuevo) generarFijos();
+    };
+  });
+}
+
 /* ---------- Estado del módulo ---------- */
-let sub = 'anadir', off = 0, filtro = null;
-let buffer = '', catSel = 'comida', tipoSel = 'gasto', nota = '', fechaSel = null, editando = null;
+let sub = 'anadir', off = 0, filtro = null, busca = '';
+let buffer = '', catSel = null, tipoSel = 'gasto', nota = '', fechaSel = null, editando = null;
+/** Nunca devuelve una categoría archivada o inexistente: si la seleccionada
+    desaparece, cae en la primera disponible. */
+function catActiva() {
+  const lista = cats();
+  if (!lista.length) return null;
+  if (!catSel || !lista.some(c => c.id === catSel)) catSel = lista[0].id;
+  return catSel;
+}
 let abierto = { nota:false, fecha:false };
 
 export function irASub(s) { sub = s }
@@ -110,6 +227,12 @@ const paraInput = ms => new Date(ms - new Date(ms).getTimezoneOffset()*60000).to
 
 function pintarAnadir(c) {
   const t = gastado(0), presu = presupuesto();
+  const sel = catActiva();
+  if (!sel) {
+    c.innerHTML = `<p class="vacio">No hay ninguna categoría activa.<br>
+      Crea una en Ajustes para poder registrar gastos.</p>`;
+    return;
+  }
   const fechaTxt = fechaSel
     ? new Date(fechaSel).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})
     : 'Ahora';
@@ -136,12 +259,13 @@ function pintarAnadir(c) {
         ? `<input type="text" id="inNota" maxlength="60" placeholder="Nota" value="${escapar(nota)}">`
         : `<button data-x="nota" class="${nota?'puesto':''}">${nota ? '✎ '+escapar(nota) : 'Nota'}</button>`}
       ${abierto.fecha
-        ? `<input type="datetime-local" id="inFecha" value="${paraInput(fechaSel || Date.now())}">`
+        ? `<input type="datetime-local" id="inFecha" max="${paraInput(Date.now())}"
+             value="${paraInput(fechaSel || Date.now())}">`
         : `<button data-x="fecha" class="${fechaSel?'puesto':''}">${fechaTxt}</button>`}
     </div>
     <div class="cats" id="cats">
-      ${cats().map(x => `<button class="cat" data-id="${x.id}" aria-pressed="${x.id===catSel}"
-        ${x.id===catSel ? `style="background:${color(x.id)}"` : ''}><span>${x.emo}</span>${x.nom}</button>`).join('')}
+      ${cats().map(x => `<button class="cat" data-id="${x.id}" aria-pressed="${x.id===sel}"
+        ${x.id===sel ? `style="background:${color(x.id)}"` : ''}><span>${x.emo}</span>${x.nom}</button>`).join('')}
     </div>
     <div class="teclas" id="teclas">
       ${[1,2,3,4,5,6,7,8,9,',',0,'⌫'].map(k => `<button data-k="${k}">${k}</button>`).join('')}
@@ -160,7 +284,11 @@ function pintarAnadir(c) {
   if (iN) { iN.oninput = e => nota = e.target.value;
             iN.onblur = () => { abierto.nota = false; pintarAnadir(c) }; iN.focus() }
   const iF = c.querySelector('#inFecha');
-  if (iF) { iF.onchange = e => fechaSel = e.target.value ? new Date(e.target.value).getTime() : null;
+  if (iF) { iF.onchange = e => {
+              const v = e.target.value ? new Date(e.target.value).getTime() : null;
+              if (v && v > Date.now()) { avisar('Esa fecha aún no ha llegado'); return }
+              fechaSel = v;
+            };
             iF.onblur = () => { abierto.fecha = false; pintarAnadir(c) }; iF.focus() }
 
   c.querySelector('#extras').onclick = e => {
@@ -185,7 +313,7 @@ function pintarAnadir(c) {
   };
   c.querySelector('#guardar').onclick = () => {
     const imp = valor(); if (imp <= 0) return;
-    const campos = { c: imp, cat: catSel, n: nota.trim(), tipo: tipoSel };
+    const campos = { c: imp, cat: catActiva(), n: nota.trim(), tipo: tipoSel };
     if (editando) {
       actualizar('gastos', editando, { ...campos, t: fechaSel || Date.now() });
       avisar('Movimiento actualizado');
@@ -198,7 +326,7 @@ function pintarAnadir(c) {
 }
 
 function limpiar() {
-  buffer = ''; catSel = 'comida'; tipoSel = 'gasto'; nota = ''; fechaSel = null; editando = null;
+  buffer = ''; catSel = null; tipoSel = 'gasto'; nota = ''; fechaSel = null; editando = null;
   abierto = { nota:false, fecha:false };
 }
 export function editarMovimiento(id) {
@@ -214,15 +342,34 @@ export function editarMovimiento(id) {
    Submódulo: movimientos
    ========================================================================== */
 function pintarLista(c) {
-  const gs = delMes(off);
+  const q = busca.trim().toLowerCase();
+  /* Al buscar se ignora el mes: lo que quieres es encontrarlo, esté donde esté. */
+  const gs = q
+    ? datos.gastos.filter(g => (g.n || '').toLowerCase().includes(q) ||
+        cat(g.cat).nom.toLowerCase().includes(q) || g.c.toFixed(2).replace('.', ',').includes(q))
+    : delMes(off);
   const presentes = catsTodas().filter(x => gs.some(g => g.cat === x.id && !esIngreso(g)));
   if (filtro && !presentes.some(x => x.id === filtro)) filtro = null;
 
-  c.innerHTML = `<div class="navmes" id="nav"></div>
+  c.innerHTML = `
+    <div class="buscador">
+      <input id="buscar" type="search" placeholder="Buscar concepto, categoría o importe"
+        value="${escapar(busca)}" autocapitalize="off" autocorrect="off">
+    </div>
+    <div class="navmes ${q ? 'oculto' : ''}" id="nav"></div>
     <div class="filtros" id="filtros"></div>
     <div id="cuerpo"></div>`;
 
-  navMes(c.querySelector('#nav'), off,
+  const inp = c.querySelector('#buscar');
+  inp.oninput = e => {
+    busca = e.target.value;
+    const pos = e.target.selectionStart;
+    pintarLista(c);
+    const nuevo = c.querySelector('#buscar');
+    nuevo.focus(); nuevo.setSelectionRange(pos, pos);
+  };
+
+  if (!q) navMes(c.querySelector('#nav'), off,
     n => { off = n; pintarLista(c) },
     datos.gastos.length ? Math.min(...datos.gastos.map(g => g.t)) : Date.now());
 
@@ -240,11 +387,14 @@ function pintarLista(c) {
   const vis = filtro ? gs.filter(g => g.cat === filtro) : gs;
   const cuerpo = c.querySelector('#cuerpo');
   if (!vis.length) {
-    cuerpo.innerHTML = `<p class="vacio">${gs.length
-      ? 'Nada en esta categoría este mes.'
+    cuerpo.innerHTML = `<p class="vacio">${q
+      ? 'Nada coincide con «' + escapar(busca) + '».'
+      : gs.length ? 'Nada en esta categoría este mes.'
       : 'Sin movimientos en ' + nombreMes(off).toLowerCase() + '.'}</p>`;
     return;
   }
+  if (q) cuerpo.dataset.resumen = `${vis.length} resultado${vis.length===1?'':'s'} · ${
+    eur(vis.filter(g => !esIngreso(g)).reduce((s,g) => s+g.c, 0))}`;
 
   const hoy = dia();
   const dias = {};
@@ -261,8 +411,10 @@ function pintarLista(c) {
         return `<li data-id="${g.id}">
           <div class="punto" style="background:${ing ? colorVar('ingreso') : color(x.id)}22">
             ${ing ? '↑' : x.emo}</div>
-          <div class="txt"><b>${g.n ? escapar(g.n) : (ing ? 'Ingreso' : x.nom)}</b>
+          <div class="txt"><b>${g.n ? escapar(g.n) : (ing ? 'Ingreso' : x.nom)}${
+            g.fijo ? ' <span class="fijo">fijo</span>' : ''}</b>
             <small>${g.n ? (ing ? 'Ingreso' : x.nom) + ' · ' : ''}${new Date(g.t)
+              .toLocaleDateString('es-ES',{day:'numeric',month:'short'})} · ${new Date(g.t)
               .toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</small></div>
           ${g.pend && nube ? '<div class="subir"></div>' : ''}
           <div class="imp num ${ing ? 'ingreso' : ''}">${ing ? '+' : ''}${eur(g.c)}</div>
@@ -307,8 +459,12 @@ function pintarMetricas(c) {
   const diasMes = finMes(off).getDate();
   const diasPasados = enCurso ? new Date().getDate() : diasMes;
   const media = total / diasPasados;
-  /* La proyección se calla los primeros días: con dos o tres datos es ruido. */
+  /* La proyección se calla los primeros días: con dos o tres datos es ruido.
+     Los gastos fijos no se promedian: se suman enteros una sola vez. */
   const proyectable = !enCurso || diasPasados >= 7;
+  const fijoMes = totalFijos(off);
+  const mediaVar = (total - fijoMes) / diasPasados;
+  const proyeccion = mediaVar * diasMes + fijoMes;
 
   const porDia = {};
   gs.filter(g => !esIngreso(g)).forEach(g => { const k = dia(g.t); porDia[k] = (porDia[k]||0) + g.c });
@@ -349,7 +505,7 @@ function pintarMetricas(c) {
       <div class="mini"><b class="num">${gs.length}</b><small>movimientos</small></div>
       <div class="mini"><b class="num">${eur0(top[1])}</b><small>el ${new Date(desdeClave(top[0]))
         .toLocaleDateString('es-ES',{day:'numeric',month:'short'})}, el día más caro</small></div>
-      <div class="mini"><b class="num">${proyectable ? eur0(media*diasMes) : '—'}</b>
+      <div class="mini"><b class="num">${proyectable ? eur0(proyeccion) : '—'}</b>
         <small>${enCurso ? (proyectable ? 'proyección a fin de mes' : 'proyección desde el día 7')
                          : 'gasto medio del mes'}</small></div>
     </div>`}
@@ -432,7 +588,7 @@ export function hojaImportarCSV() {
         if (r.filas?.length) { listos = r.filas; btn.textContent = `Importar ${r.filas.length}` }
         return;
       }
-      listos.forEach(f => anadir('gastos', f));
+      enLote(() => listos.forEach(f => anadir('gastos', f)));
       cerrarHoja();
       avisar(`Importados ${listos.length} movimientos`);
     };
@@ -551,9 +707,11 @@ export function hojaCategorias() {
         const lista = catsTodas();
         const i = lista.findIndex(x => x.id === sube.dataset.sube);
         if (i <= 0) return avisar('Ya es la primera');
-        lista.forEach((x, k) => actualizar('categorias', x.id, { orden: k }));
-        actualizar('categorias', lista[i].id, { orden: i - 1 });
-        actualizar('categorias', lista[i-1].id, { orden: i });
+        enLote(() => {
+          lista.forEach((x, k) => actualizar('categorias', x.id, { orden: k }));
+          actualizar('categorias', lista[i].id, { orden: i - 1 });
+          actualizar('categorias', lista[i-1].id, { orden: i });
+        });
         pinta(); emitir();
         return;
       }
