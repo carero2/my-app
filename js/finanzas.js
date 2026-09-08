@@ -2,23 +2,54 @@
    Módulo Finanzas: añadir, listado y métricas.
    ========================================================================== */
 import {
-  datos, anadir, actualizar, borrar, restaurar, ajuste, nube,
+  datos, anadir, actualizar, borrar, restaurar, ajuste, nube, uid,
   eur, eur0, escapar, dia, inicioMes, finMes, nombreMes, navMes,
   avisar, abrirHoja, cerrarHoja, emitir,
 } from './nucleo.js';
 
-export const CATS = [
-  {id:'comida',     nom:'Comida',     emo:'🍽'},
-  {id:'transporte', nom:'Transporte', emo:'🚇'},
-  {id:'compras',    nom:'Compras',    emo:'👕'},
-  {id:'ocio',       nom:'Ocio',       emo:'🍺'},
-  {id:'hogar',      nom:'Hogar',      emo:'🏠'},
-  {id:'salud',      nom:'Gimnasio',   emo:'🏋'},
-  {id:'viajes',     nom:'Viajes',     emo:'✈️'},
-  {id:'otros',      nom:'Otros',      emo:'📦'},
+/* Las categorías son una colección más, así que se editan desde la app y viajan
+   en la sincronización. Estas ocho se crean la primera vez, con los mismos
+   identificadores de siempre para que el histórico no pierda su categoría. */
+const SEMILLA = [
+  {id:'comida',     nom:'Comida',     emo:'🍽',  color:'#C7513F'},
+  {id:'transporte', nom:'Transporte', emo:'🚇',  color:'#3E6FA8'},
+  {id:'compras',    nom:'Compras',    emo:'👕',  color:'#8C8378'},
+  {id:'ocio',       nom:'Ocio',       emo:'🍺',  color:'#D98A2B'},
+  {id:'hogar',      nom:'Hogar',      emo:'🏠',  color:'#4E8A5B'},
+  {id:'salud',      nom:'Gimnasio',   emo:'🏋',  color:'#7A5BA6'},
+  {id:'viajes',     nom:'Viajes',     emo:'✈️', color:'#2F8C8C'},
+  {id:'otros',      nom:'Otros',      emo:'📦',  color:'#5F5A54'},
 ];
-export const cat = id => CATS.find(c => c.id === id) || CATS.at(-1);
-const color = id => getComputedStyle(document.documentElement).getPropertyValue('--' + id).trim() || '#888';
+export const PALETA_CAT = ['#C7513F','#3E6FA8','#8C8378','#D98A2B','#4E8A5B','#7A5BA6',
+                           '#2F8C8C','#5F5A54','#B0447A','#5C7A1E'];
+
+export function sembrarCategorias() {
+  if (ajuste('catsSembradas')) return;
+  SEMILLA.forEach((c, i) => {
+    if (!datos.categorias.some(x => x.id === c.id)) anadir('categorias', { ...c, orden: i });
+  });
+  ajuste('catsSembradas', true);
+}
+
+const porOrden = (a, b) => (a.orden ?? 0) - (b.orden ?? 0) || (a.t || 0) - (b.t || 0);
+/** Categorías disponibles para asignar. */
+export const cats = () => datos.categorias.filter(c => !c.archivada).sort(porOrden);
+export const catsTodas = () => [...datos.categorias].sort(porOrden);
+/** Nunca devuelve nulo: un movimiento con una categoría ya borrada se sigue viendo. */
+export const cat = id => datos.categorias.find(c => c.id === id) ||
+  { id, nom: id ? id[0].toUpperCase() + id.slice(1) : 'Otros', emo:'•', color:'#8C8378', huerfana:true };
+const color = id => cat(id).color || '#8C8378';
+const colorVar = n => getComputedStyle(document.documentElement).getPropertyValue('--' + n).trim() || '#888';
+
+/** Identificador legible a partir del nombre, para que el atajo sea fácil de mantener. */
+export function idDesde(nombre) {
+  const base = nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20) || 'cat';
+  if (!datos.categorias.some(c => c.id === base)) return base;
+  let n = 2;
+  while (datos.categorias.some(c => c.id === base + n)) n++;
+  return base + n;
+}
 
 /* ---------- Consultas ---------- */
 export const esIngreso = g => g.tipo === 'ingreso';
@@ -28,7 +59,19 @@ export const delMes = off => {
 };
 export const gastado = off => delMes(off).filter(g => !esIngreso(g)).reduce((s,g) => s + g.c, 0);
 export const ingresado = off => delMes(off).filter(esIngreso).reduce((s,g) => s + g.c, 0);
-export const presupuesto = () => ajuste('presupuesto') || 0;
+/* El presupuesto puede fijarse como un tope mensual único o categoría a categoría.
+   En el segundo caso, el tope del mes es la suma de los topes definidos. */
+export const modoPresu     = () => ajuste('modoPresupuesto') || 'total';
+export const presupuestos  = () => ajuste('presupuestos') || {};
+export const topeCat       = id => presupuestos()[id] || 0;
+export const presupuesto = () => modoPresu() === 'categorias'
+  ? Object.values(presupuestos()).reduce((s, v) => s + (Number(v) || 0), 0)
+  : (ajuste('presupuesto') || 0);
+export const gastadoCat = (id, off = 0) =>
+  delMes(off).filter(g => g.cat === id && !esIngreso(g)).reduce((s,g) => s + g.c, 0);
+/** Categorías que ya han superado su tope este mes. */
+export const excedidas = (off = 0) => modoPresu() !== 'categorias' ? []
+  : cats().filter(c => topeCat(c.id) && gastadoCat(c.id, off) > topeCat(c.id));
 
 /* ---------- Estado del módulo ---------- */
 let sub = 'anadir', off = 0, filtro = null;
@@ -75,8 +118,12 @@ function pintarAnadir(c) {
   c.innerHTML = `
     <div class="cinta">
       <span>${nombreMes(0)} · <b class="num">${eur(t)}</b></span>
-      <span>${presu ? (presu - t >= 0 ? `quedan ${eur0(presu-t)}` : `${eur0(t-presu)} de más`)
-                    : `${delMes(0).length} movimiento${delMes(0).length===1?'':'s'}`}</span>
+      <span>${(() => {
+        const mal = excedidas().length;
+        if (mal) return `<span class="rojo">${mal} categoría${mal===1?'':'s'} pasada${mal===1?'':'s'}</span>`;
+        if (presu) return presu - t >= 0 ? `quedan ${eur0(presu-t)}` : `${eur0(t-presu)} de más`;
+        return `${delMes(0).length} movimiento${delMes(0).length===1?'':'s'}`;
+      })()}</span>
     </div>
     ${presu ? `<div class="barra"><i style="width:${Math.min(t/presu,1)*100}%"
       class="${t>presu?'pasado':''}"></i></div>` : ''}
@@ -94,7 +141,7 @@ function pintarAnadir(c) {
         : `<button data-x="fecha" class="${fechaSel?'puesto':''}">${fechaTxt}</button>`}
     </div>
     <div class="cats" id="cats">
-      ${CATS.map(x => `<button class="cat" data-id="${x.id}" aria-pressed="${x.id===catSel}"
+      ${cats().map(x => `<button class="cat" data-id="${x.id}" aria-pressed="${x.id===catSel}"
         ${x.id===catSel ? `style="background:${color(x.id)}"` : ''}><span>${x.emo}</span>${x.nom}</button>`).join('')}
     </div>
     <div class="teclas" id="teclas">
@@ -169,7 +216,7 @@ export function editarMovimiento(id) {
    ========================================================================== */
 function pintarLista(c) {
   const gs = delMes(off);
-  const presentes = CATS.filter(x => gs.some(g => g.cat === x.id && !esIngreso(g)));
+  const presentes = catsTodas().filter(x => gs.some(g => g.cat === x.id && !esIngreso(g)));
   if (filtro && !presentes.some(x => x.id === filtro)) filtro = null;
 
   c.innerHTML = `<div class="navmes" id="nav"></div>
@@ -213,7 +260,7 @@ function pintarLista(c) {
       <ul class="filas">${gs2.map(g => {
         const x = cat(g.cat), ing = esIngreso(g);
         return `<li data-id="${g.id}">
-          <div class="punto" style="background:${ing ? color('ingreso') : color(x.id)}22">
+          <div class="punto" style="background:${ing ? colorVar('ingreso') : color(x.id)}22">
             ${ing ? '↑' : x.emo}</div>
           <div class="txt"><b>${g.n ? escapar(g.n) : (ing ? 'Ingreso' : x.nom)}</b>
             <small>${g.n ? (ing ? 'Ingreso' : x.nom) + ' · ' : ''}${new Date(g.t)
@@ -268,8 +315,13 @@ function pintarMetricas(c) {
   gs.filter(g => !esIngreso(g)).forEach(g => { const k = dia(g.t); porDia[k] = (porDia[k]||0) + g.c });
   const top = Object.entries(porDia).sort((a,b) => b[1]-a[1])[0];
 
-  const porCat = CATS.map(x => ({...x, s: gs.filter(g => g.cat===x.id && !esIngreso(g))
-    .reduce((s,g) => s+g.c, 0)})).filter(x => x.s > 0).sort((a,b) => b.s - a.s);
+  const porCats = modoPresu() === 'categorias';
+  const porCat = catsTodas().map(x => ({...x,
+      s: gs.filter(g => g.cat===x.id && !esIngreso(g)).reduce((s,g) => s+g.c, 0),
+      tope: porCats ? topeCat(x.id) : 0 }))
+    .filter(x => x.s > 0 || x.tope > 0)
+    .sort((a,b) => b.s - a.s);
+  const pasadas = porCat.filter(x => x.tope && x.s > x.tope).length;
 
   cuerpo.innerHTML = `
     <div class="panel">
@@ -302,12 +354,21 @@ function pintarMetricas(c) {
     </div>`}
 
     <div class="panel">
-      <div style="font-size:15px;color:var(--muted)">En qué se te va</div>
-      ${porCat.map(x => `<div class="filaCat">
+      <div style="font-size:15px;color:var(--muted)">En qué se te va${
+        pasadas ? ` · <span class="rojo">${pasadas} categoría${pasadas===1?'':'s'} pasada${
+          pasadas===1?'':'s'}</span>` : ''}</div>
+      ${porCat.map(x => {
+        const rel = x.tope ? Math.min(x.s / x.tope, 1) * 100 : (total ? (x.s/total)*100 : 0);
+        const mal = x.tope && x.s > x.tope;
+        return `<div class="filaCat">
           <span>${x.emo} ${x.nom}</span><span class="num">${eur(x.s)}</span>
-          <div class="barra"><i style="width:${(x.s/total)*100}%;background:${color(x.id)}"></i></div>
-          <span class="pct num">${((x.s/total)*100).toFixed(0)}%</span>
-        </div>`).join('')}
+          <div class="barra"><i class="${mal ? 'pasado' : ''}"
+            style="width:${rel}%;background:${mal ? '' : color(x.id)}"></i></div>
+          <span class="pct num ${mal ? 'rojo' : ''}">${x.tope
+            ? (mal ? `${eur0(x.s - x.tope)} de más` : `quedan ${eur0(x.tope - x.s)}`)
+            : ((x.s/total)*100).toFixed(0) + '%'}</span>
+        </div>`;
+      }).join('')}
     </div>
 
     <div class="panel">
@@ -404,7 +465,7 @@ export function analizarCSV(texto) {
     const catBruta = (p[iC] || '').toLowerCase();
     filas.push({
       c: Math.round(imp*100)/100,
-      cat: CATS.some(x => x.id === catBruta) ? catBruta : adivinarCat(p[iN] || p[iC] || ''),
+      cat: porNombre(catBruta) || adivinarCat(p[iN] || p[iC] || ''),
       n: (p[iN] || '').slice(0, 60),
       tipo: /ingreso|abono|nomina|nómina/i.test(p[iT] || p[iN] || '') ? 'ingreso' : 'gasto',
       t: ms,
@@ -429,6 +490,15 @@ function fecha(s = '') {
   return null;
 }
 
+/** Resuelve lo que venga en un CSV: acepta el identificador o el nombre visible. */
+export function porNombre(txt) {
+  if (!txt) return null;
+  const n = String(txt).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const c = datos.categorias.find(x =>
+    x.id === n || x.nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === n);
+  return c ? c.id : null;
+}
+
 const REGLAS = [
   [/mercadona|carrefour|lidl|aldi|dia |alcampo|super|frut|panader|restaurante|bar |cafe|cafeter|glovo|just eat|burger|pizza/i, 'comida'],
   [/renfe|metro|emt|uber|cabify|taxi|gasolin|repsol|cepsa|bp |parking|peaje|bicing|bus/i, 'transporte'],
@@ -438,4 +508,111 @@ const REGLAS = [
   [/gimnasio|gym|basic ?fit|fitness|crossfit|padel|pádel|piscina|fisio|farmacia|clinic|dentist|medic/i, 'salud'],
   [/booking|airbnb|hotel|hostal|ryanair|vueling|iberia|easyjet|aerolin|aeropuerto|vuelo|renfe ave|equipaje|maleta/i, 'viajes'],
 ];
-const adivinarCat = txt => REGLAS.find(([re]) => re.test(txt))?.[1] || 'otros';
+const adivinarCat = txt => {
+  const id = REGLAS.find(([re]) => re.test(txt))?.[1];
+  return id && datos.categorias.some(c => c.id === id) ? id : 'otros';
+};
+
+
+/* ==========================================================================
+   Gestor de categorías
+   ========================================================================== */
+export function hojaCategorias() {
+  const usos = id => datos.gastos.filter(g => g.cat === id).length;
+  abrirHoja(`
+    <h3>Categorías</h3>
+    <p class="pieNota" style="padding:0 0 6px">Toca una para editarla. El orden es el que
+      verás en el teclado de gastos.</p>
+    <div id="listaCats"></div>
+    <div class="fila"><button id="catCerrar">Cerrar</button>
+      <button class="ok" id="catNueva">+ Nueva</button></div>`,
+  caja => {
+    const pinta = () => {
+      caja.querySelector('#listaCats').innerHTML = catsTodas().map(c => `
+        <div class="filaCat2 ${c.archivada ? 'archivada' : ''}" data-id="${c.id}">
+          <span class="punto" style="background:${c.color}22;color:${c.color}">${c.emo}</span>
+          <span class="txt"><b>${escapar(c.nom)}</b>
+            <small>${usos(c.id)} movimiento${usos(c.id) === 1 ? '' : 's'}${
+              c.archivada ? ' · archivada' : ''}</small></span>
+          <button data-sube="${c.id}" aria-label="Subir">↑</button>
+        </div>`).join('');
+    };
+    pinta();
+    caja.querySelector('#catCerrar').onclick = cerrarHoja;
+    caja.querySelector('#catNueva').onclick = () => hojaCategoria(null);
+    caja.querySelector('#listaCats').onclick = e => {
+      const sube = e.target.closest('[data-sube]');
+      if (sube) {
+        const lista = catsTodas();
+        const i = lista.findIndex(x => x.id === sube.dataset.sube);
+        if (i <= 0) return avisar('Ya es la primera');
+        lista.forEach((x, k) => actualizar('categorias', x.id, { orden: k }));
+        actualizar('categorias', lista[i].id, { orden: i - 1 });
+        actualizar('categorias', lista[i-1].id, { orden: i });
+        pinta(); emitir();
+        return;
+      }
+      const fila = e.target.closest('[data-id]');
+      if (fila) hojaCategoria(datos.categorias.find(c => c.id === fila.dataset.id));
+    };
+  });
+}
+
+function hojaCategoria(c) {
+  const nueva = !c;
+  const d = c || { nom:'', emo:'🏷', color: PALETA_CAT.find(x =>
+    !datos.categorias.some(y => y.color === x)) || PALETA_CAT[0] };
+  const usos = c ? datos.gastos.filter(g => g.cat === c.id).length : 0;
+  abrirHoja(`
+    <h3>${nueva ? 'Nueva categoría' : 'Editar categoría'}</h3>
+    <label><span>Nombre</span><input id="cNom" maxlength="20" value="${escapar(d.nom)}"
+      placeholder="Regalos, mascota, formación…"></label>
+    <label><span>Emoji</span><input id="cEmo" maxlength="2" value="${escapar(d.emo)}"></label>
+    <label><span>Color</span></label>
+    <div class="colores" id="cCol">${PALETA_CAT.map(x => `<button data-c="${x}"
+      style="background:${x}" aria-pressed="${d.color === x}" aria-label="Color"></button>`).join('')}</div>
+    ${nueva ? '' : `<p class="pieNota">Identificador: <b>${d.id}</b>. Es lo que debe enviar el
+      atajo de iOS, y no cambia aunque renombres la categoría.</p>`}
+    <div class="fila">
+      ${nueva ? '' : (d.archivada
+        ? '<button class="acento" id="cRecuperar">Recuperar</button>'
+        : '<button class="mal" id="cQuitar">' + (usos ? 'Archivar' : 'Borrar') + '</button>')}
+      <button id="cCancelar">Cancelar</button>
+      <button class="ok" id="cOk">${nueva ? 'Crear' : 'Guardar'}</button>
+    </div>`,
+  caja => {
+    let color = d.color;
+    const $ = s => caja.querySelector(s);
+    $('#cCol').onclick = e => {
+      const b = e.target.closest('[data-c]'); if (!b) return;
+      color = b.dataset.c;
+      caja.querySelectorAll('#cCol button').forEach(x =>
+        x.setAttribute('aria-pressed', x.dataset.c === color));
+    };
+    $('#cCancelar').onclick = () => { cerrarHoja(); hojaCategorias() };
+    $('#cRecuperar')?.addEventListener('click', () => {
+      actualizar('categorias', c.id, { archivada: false });
+      cerrarHoja(); hojaCategorias(); emitir(); avisar('Categoría recuperada');
+    });
+    $('#cQuitar')?.addEventListener('click', () => {
+      if (usos) {
+        actualizar('categorias', c.id, { archivada: true });
+        avisar(`Archivada: sus ${usos} movimientos la conservan`);
+      } else {
+        const it = borrar('categorias', c.id);
+        avisar('Categoría borrada', { texto:'Deshacer',
+          alPulsar: () => { restaurar('categorias', it); emitir() } });
+      }
+      cerrarHoja(); hojaCategorias(); emitir();
+    });
+    $('#cOk').onclick = () => {
+      const nom = $('#cNom').value.trim();
+      if (!nom) return avisar('Ponle un nombre');
+      const campos = { nom, emo: $('#cEmo').value.trim() || '🏷', color };
+      if (nueva) anadir('categorias', { ...campos, id: idDesde(nom), orden: datos.categorias.length });
+      else actualizar('categorias', c.id, campos);
+      cerrarHoja(); hojaCategorias(); emitir();
+      avisar(nueva ? 'Categoría creada' : 'Categoría actualizada');
+    };
+  });
+}

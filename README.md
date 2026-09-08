@@ -39,9 +39,9 @@ de sobra este uso.
 
 **Finanzas**
 - Teclado numérico propio para registrar un gasto en dos segundos
-- Ocho categorías con código de color tomado de los billetes de euro
+- Categorías editables desde la app: nombre, emoji, color y orden
 - Ingresos además de gastos, con balance y tasa de ahorro
-- Presupuesto mensual opcional con barra de progreso
+- Presupuesto mensual opcional: un tope único, o un límite por cada categoría
 - Fecha y hora manuales, para efectivo o recibos atrasados
 - Listado por meses con filtro por categoría y edición al tocar
 - Métricas: variación frente al mes anterior, media diaria, día más caro,
@@ -257,6 +257,25 @@ inicio, el ordenador). Cada uno guarda la configuración por separado.
 **Añadir un gasto:** teclado numérico, categoría y guardar. El botón `↓ Gasto` lo cambia a
 `↑ Ingreso`. El botón de fecha permite registrar algo de otro día.
 
+**Categorías.** En Ajustes → *Gestionar categorías* puedes crear, renombrar, recolorear y
+reordenar. Las ocho iniciales se crean solas la primera vez.
+
+Al crear una, su **identificador** se genera a partir del nombre sin acentos ni espacios
+(«Educación y cursos» → `educacion-y-cursos`). Ese identificador **no cambia al renombrar**,
+para que el histórico no se rompa; por eso Gimnasio sigue siendo `salud` por dentro. La hoja
+de edición te lo muestra, porque es lo que debe enviar el atajo de iOS.
+
+Una categoría con movimientos no se puede borrar, solo **archivar**: desaparece del teclado
+pero sus movimientos la conservan. Sin movimientos, se borra con opción de deshacer. Y si un
+movimiento apunta a una categoría que ya no existe, se sigue mostrando con su nombre en vez
+de convertirse en «Otros».
+
+**Presupuesto.** En Ajustes puedes elegir entre un **tope total** para el mes o un
+**límite por categoría**. En el segundo caso, el tope del mes es la suma de los límites que
+definas, y las categorías sin límite quedan sin controlar. Las que se pasan aparecen en rojo
+en Métricas, en la cinta de Finanzas y en la pestaña Hoy. Cambiar de modo no borra la
+configuración del otro: puedes volver al tope total y seguirá guardado.
+
 **Editar o borrar un movimiento:** en *Movimientos*, tócalo para editarlo o pulsa la ✕ para
 borrarlo. Sale un aviso con **Deshacer** durante seis segundos.
 
@@ -320,8 +339,10 @@ mensual cuenta meses. El periodo en curso no rompe la racha mientras aún pueda 
 Con el Worker desplegado, un atajo puede registrar un gasto **sin abrir la app**:
 
 1. **Pedir entrada** → tipo Número → `¿Cuánto?`
-2. **Lista** con las categorías, en minúsculas:
-   `comida`, `transporte`, `compras`, `ocio`, `hogar`, `salud`, `viajes`, `otros`
+2. **Lista** con los identificadores de tus categorías, en minúsculas. Los iniciales son
+   `comida`, `transporte`, `compras`, `ocio`, `hogar`, `salud`, `viajes`, `otros`.
+   Si creas categorías nuevas, mira su identificador en Ajustes → Gestionar categorías
+   y añádelo a esta lista
 3. **Elegir de la lista** → mensaje `Categoría`
 4. **Obtener contenido de una URL**:
    - URL: `https://TU-WORKER.workers.dev/col/gastos`
@@ -358,7 +379,7 @@ fecha;importe;categoria;nota;tipo
 |---|---|---|
 | `fecha` | Sí | `dd/mm/aaaa` o `aaaa-mm-dd` |
 | `importe` | Sí | Coma o punto decimal. El signo se ignora |
-| `categoria` | No | `comida`, `transporte`, `compras`, `ocio`, `hogar`, `salud`, `viajes`, `otros` |
+| `categoria` | No | Identificador o nombre visible de cualquiera de tus categorías |
 | `nota` | No | Texto, hasta 60 caracteres |
 | `tipo` | No | `ingreso` o `gasto`. Por defecto `gasto` |
 
@@ -373,7 +394,7 @@ fecha;importe;categoria;nota;tipo
 
 ## Modelo de datos
 
-Cuatro colecciones. Todos los items comparten `id` (identificador único) y `t` (marca de
+Cinco colecciones. Todos los items comparten `id` (identificador único) y `t` (marca de
 tiempo en milisegundos). El campo `pend` es local: marca lo que aún no ha subido y nunca
 se envía al servidor.
 
@@ -409,6 +430,11 @@ Las semanas empiezan en lunes. Cambiar la periodicidad de un hábito no borra su
 los registros antiguos quedan con claves de otro formato y dejan de contar, pero reaparecen
 si vuelves a la periodicidad original.
 
+**categorias**
+```js
+{ id: 'comida', t, nom: 'Comida', emo: '🍽', color: '#C7513F', orden: 0, archivada: false }
+```
+
 **notas**
 ```js
 { id, t, titulo: 'Idea', cat: 'Trabajo', color: '#4E8A5B', texto: '…', m: 1757000000000 }
@@ -424,7 +450,10 @@ guardados.
 vida.gastos  vida.habitos  vida.registros  vida.notas
 vida.cola.<colección>      ids borrados pendientes de subir
 vida.nube                  { url, clave }
-vida.ajuste.presupuesto    número
+vida.ajuste.catsSembradas    true una vez creadas las categorías iniciales
+vida.ajuste.presupuesto       número, tope mensual único
+vida.ajuste.modoPresupuesto  'total' | 'categorias'
+vida.ajuste.presupuestos     { categoría: tope } cuando el modo es por categoría
 vida.ajuste.crono          { hab, inicio }
 vida.ajuste.coloresGrupo   { grupo: color } — caché; el color viaja en cada hábito
 vida.ajuste.coloresNota    { categoría: color } — caché; el color viaja en cada nota

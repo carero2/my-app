@@ -29,11 +29,17 @@ export function pintar(vista) {
     </div>
     <p class="estado" id="cfgEstado"></p>
 
+    <div class="etiqueta">Presupuesto mensual</div>
+    <div class="opciones" id="modoPresu" style="margin-top:8px">
+      <button data-m="total" aria-pressed="${fin.modoPresu()==='total'}">Un tope total</button>
+      <button data-m="categorias" aria-pressed="${fin.modoPresu()==='categorias'}">Por categoría</button>
+    </div>
+    <div id="cajaPresu"></div>
+
     <div class="etiqueta">Finanzas</div>
     <div class="grupo">
-      <label>Presupuesto mensual
-        <span><input id="presu" type="number" inputmode="decimal" min="0" step="10"
-          placeholder="Sin límite" value="${fin.presupuesto() || ''}"> €</span></label>
+      <button id="gestCats">Gestionar categorías
+        <span class="num">${fin.cats().length}</span></button>
       <button id="impCSV">Importar movimientos desde CSV</button>
     </div>
 
@@ -53,7 +59,7 @@ export function pintar(vista) {
 
     <p class="pieNota">Con la sincronización activa tus datos viven en tu Worker y este dispositivo
       guarda una copia para funcionar sin cobertura. Sin ella, existen solo aquí.</p>
-    <p class="pieNota">My-app v8 · ${window.matchMedia('(display-mode: standalone)').matches
+    <p class="pieNota">My-app v10 · ${window.matchMedia('(display-mode: standalone)').matches
       ? 'abierta desde el icono' : 'abierta en el navegador'}</p>
     <input type="file" id="ficheroJSON" accept="application/json" hidden>
   </div>`;
@@ -87,12 +93,48 @@ export function pintar(vista) {
     configurarNube(null); pintar(vista); avisar('Desconectado');
   });
 
-  $('#presu').onchange = e => {
-    const v = Math.max(0, parseFloat(e.target.value) || 0);
-    ajuste('presupuesto', v || null);
-    emitir();
-    avisar(v ? 'Presupuesto: ' + eur0(v) : 'Presupuesto desactivado');
+  function pintarPresu() {
+    const caja = $('#cajaPresu');
+    if (fin.modoPresu() === 'total') {
+      caja.innerHTML = `<div class="grupo"><label>Límite del mes
+        <span><input id="presu" type="number" inputmode="decimal" min="0" step="10"
+          placeholder="Sin límite" value="${ajuste('presupuesto') || ''}"> €</span></label></div>
+        <p class="pieNota">Un único tope para todo el gasto del mes.</p>`;
+      caja.querySelector('#presu').onchange = e => {
+        const v = Math.max(0, parseFloat(e.target.value) || 0);
+        ajuste('presupuesto', v || null);
+        emitir(); pintar(vista);
+        avisar(v ? 'Presupuesto: ' + eur0(v) : 'Presupuesto desactivado');
+      };
+      return;
+    }
+    const topes = fin.presupuestos();
+    caja.innerHTML = `<div class="grupo">
+      ${fin.cats().map(c => `<label>${c.emo} ${c.nom}
+        <span><input data-cat="${c.id}" type="number" inputmode="decimal" min="0" step="10"
+          placeholder="—" value="${topes[c.id] || ''}"> €</span></label>`).join('')}
+      </div>
+      <p class="pieNota">Deja en blanco las que no quieras limitar.
+        El tope del mes será la suma de las que definas:
+        <b>${fin.presupuesto() ? eur0(fin.presupuesto()) : 'sin límite'}</b>.</p>`;
+    caja.querySelectorAll('[data-cat]').forEach(inp => {
+      inp.onchange = () => {
+        const v = Math.max(0, parseFloat(inp.value) || 0);
+        const nuevos = { ...fin.presupuestos() };
+        v ? nuevos[inp.dataset.cat] = v : delete nuevos[inp.dataset.cat];
+        ajuste('presupuestos', Object.keys(nuevos).length ? nuevos : null);
+        emitir(); pintarPresu();
+        avisar(v ? `${fin.cat(inp.dataset.cat).nom}: ${eur0(v)} al mes` : 'Límite quitado');
+      };
+    });
+  }
+  pintarPresu();
+  $('#modoPresu').onclick = e => {
+    const b = e.target.closest('[data-m]'); if (!b) return;
+    ajuste('modoPresupuesto', b.dataset.m);
+    emitir(); pintar(vista);
   };
+  $('#gestCats').onclick = () => fin.hojaCategorias();
   $('#impCSV').onclick = () => fin.hojaImportarCSV();
 
   $('#expCSV').onclick = () => {

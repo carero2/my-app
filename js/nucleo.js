@@ -3,7 +3,7 @@
    Cada módulo importa de aquí; nadie habla con localStorage directamente.
    ========================================================================== */
 
-export const COLECCIONES = ['gastos', 'habitos', 'registros', 'notas'];
+export const COLECCIONES = ['gastos', 'habitos', 'registros', 'notas', 'categorias'];
 
 const K = {
   datos:  c => 'vida.' + c,

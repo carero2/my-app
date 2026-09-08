@@ -35,6 +35,9 @@ document.getElementById('tabs').onclick = e => {
 /* Cuando cambian los datos, se repinta lo que se está viendo. */
 alCambiar(() => pintar());
 
+/* Las ocho categorías de siempre se crean la primera vez que se abre la app. */
+finanzas.sembrarCategorias();
+
 /* Parámetros de URL, para los atajos:  ?ver=finanzas  ·  ?add=1  ·  ?cat=comida */
 const p = new URLSearchParams(location.search);
 if (p.has('add')) { finanzas.irASub('anadir'); actual = 'finanzas' }

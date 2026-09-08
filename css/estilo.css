@@ -184,7 +184,10 @@ svg.graf{width:100%;height:110px;overflow:visible;margin-top:10px;display:block}
 .hoyNo{font-size:11px;color:var(--muted);flex:none;background:var(--hueco);
   padding:3px 9px;border-radius:99px}
 .tira div.ahora{font-weight:600;color:var(--ink)}
-.tira div.ahora i{box-shadow:0 0 0 1.5px var(--ink)}
+/* El día en curso se marca con un punto bajo la letra, no con un recuadro:
+   un borde del color del texto se ve casi blanco en modo oscuro. */
+.tira div.ahora::after{content:'';display:block;width:3px;height:3px;border-radius:50%;
+  background:currentColor;margin:3px auto 0;opacity:.7}
 
 /* Acumulado del resumen */
 .logro{display:flex;align-items:center;gap:11px;background:var(--card);border-radius:12px;
@@ -192,6 +195,14 @@ svg.graf{width:100%;height:110px;overflow:visible;margin-top:10px;display:block}
 .logro span:nth-child(2){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .logroEmo{font-size:18px;flex:none}
 .logro b{font-weight:600;letter-spacing:-.01em}
+
+/* Gestor de categorías */
+.filaCat2{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:12px;
+  padding:10px 12px;margin-top:8px}
+.filaCat2 .txt b{font-weight:500;font-size:16px}
+.filaCat2 .txt small{color:var(--muted);font-size:13px}
+.filaCat2 button{color:var(--muted);padding:6px 10px;font-size:17px}
+.filaCat2.archivada{opacity:.55}
 .opciones.dias button{min-width:42px;text-align:center;padding:9px 0}
 .hab.hecho .hab-nom b{opacity:.55}
 .hab.hecho{background:linear-gradient(var(--card),var(--card))}
