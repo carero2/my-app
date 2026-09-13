@@ -13,6 +13,7 @@ import {
   toca, esObjetivo, cuentaHoy, valorDe, cumplido, racha, fijarValor,
   cronoActivo, arrancarCrono, pararCrono, minutosCrono, reloj,
   redondo, acumulado, calcularResumen, serieResumen,
+  mejorRacha, recuperacion, porDiaSemana, mapaMes,
 } from './habitos.js';
 
 /* Refresca los relojes en pantalla mientras haya un cronómetro en marcha. */
@@ -246,6 +247,16 @@ function pintarResumen(c) {
       `${R.fin().toLocaleDateString('es-ES',{day:'numeric',month:'short'})}`;
 
   const delta = (r.pct !== null && previo.pct !== null) ? r.pct - previo.pct : null;
+  /* Recuperación agregada: de todas las veces que se falló, cuántas se
+     enmendaron al periodo siguiente. Es mejor predictor que la racha. */
+  const recs = r.filas.map(f => recuperacion(f.h, r.iniMs, r.finMs)).filter(Boolean);
+  const fallos = recs.reduce((s,x) => s + x.fallos, 0);
+  const dobles = recs.reduce((s,x) => s + x.dobles, 0);
+  const recup  = recs.reduce((s,x) => s + x.recuperados, 0);
+  const tasaRec = fallos ? Math.round((recup / fallos) * 100) : null;
+  const semanal = porDiaSemana(r.iniMs, r.finMs);
+  const flojo = semanal.filter(x => x.pct !== null).sort((a,b) => a.pct - b.pct)[0];
+
   const logros = [...r.filas, ...r.seguimiento]
     .filter(f => f.h.tipo !== 'sino' && f.suma > 0)
     .sort((a,b) => b.suma - a.suma);
@@ -262,14 +273,14 @@ function pintarResumen(c) {
     mes: [
       [r.perfectos, 'días redondos'],
       [r.completos + '/' + r.conMeta, 'hábitos al 100%'],
-      [r.hec, 'cumplidos este mes'],
-      [r.extras ? '+' + r.extras : '0', 'fuera de plan'],
+      [dobles, dobles === 1 ? 'fallo doble' : 'fallos dobles'],
+      [tasaRec === null ? '—' : tasaRec + '%', 'vuelves tras fallar'],
     ],
     ano: [
       [r.hec, 'cumplidos en el año'],
       [r.perfectos, 'días redondos'],
       [mejorSub(serie)?.etqLarga || '—', 'mejor periodo'],
-      [r.completos + '/' + r.conMeta, 'hábitos al 100%'],
+      [tasaRec === null ? '—' : tasaRec + '%', 'vuelves tras fallar'],
     ],
   }[resSeg];
 
@@ -301,6 +312,29 @@ function pintarResumen(c) {
       ${grafSerie(serie)}
     </div>` : ''}
 
+    ${resSeg !== 'semana' && semanal.some(x => x.pct !== null) ? `<div class="panel">
+      <div style="font-size:15px;color:var(--muted)">Por día de la semana</div>
+      <div class="tira semanaBarras">${semanal.map(x => `<div>
+        <i style="height:${x.pct === null ? 0 : Math.max(x.pct * 0.34, 3)}px;
+           background:var(--ink);opacity:${x.pct === null ? 0.12 : 0.3 + x.pct/143}"></i>
+        ${x.letra}<br><span class="num">${x.pct === null ? '—' : x.pct + '%'}</span></div>`).join('')}</div>
+      ${flojo && flojo.pct < 80 ? `<div class="racha">Tu día flojo es el ${
+        {L:'lunes',M:'martes',X:'miércoles',J:'jueves',V:'viernes',S:'sábado',D:'domingo'}[flojo.letra]
+        }, al ${flojo.pct}%.</div>` : ''}
+    </div>` : ''}
+
+    ${resSeg === 'mes' ? `<div class="panel">
+      <div style="font-size:15px;color:var(--muted)">Mapa del mes</div>
+      ${mapa()}
+    </div>` : ''}
+
+    ${dobles || fallos ? `<div class="panel" style="padding:15px">
+      <div class="racha" style="margin:0">${fallos
+        ? `Has fallado ${fallos} ${fallos === 1 ? 'vez' : 'veces'}${
+            dobles ? `, y ${dobles} ${dobles === 1 ? 'fue' : 'fueron'} dos periodos seguidos` : ''}.
+           ${tasaRec !== null ? `Vuelves al periodo siguiente el ${tasaRec}% de las veces.` : ''}`
+        : 'Todavía no has fallado ningún periodo.'}</div></div>` : ''}
+
     ${r.mejor ? `<div class="panel" style="padding:15px">
       <div class="racha" style="margin:0">
         Lo que mejor llevas: <b>${escapar(r.mejor.h.nombre)}</b> al ${r.mejor.pct}%${
@@ -326,7 +360,8 @@ function pintarResumen(c) {
           <div class="hab-nom"><b>${escapar(f.h.nombre)}</b>
             <small>${f.debidos ? `${f.hechos} de ${f.debidos}` : 'sin periodos que cumplir'}${
               f.extras ? ` · +${f.extras} extra` : ''}${
-              f.h.tipo !== 'sino' && f.suma ? ` · ${escapar(acumulado(f.h, f.suma))}` : ''}</small></div>
+              f.h.tipo !== 'sino' && f.suma ? ` · ${escapar(acumulado(f.h, f.suma))}` : ''}
+              <br>racha ${racha(f.h)} · mejor ${mejorRacha(f.h)}</small></div>
           <div class="imp num">${f.pct === null ? '—' : f.pct + '%'}</div>
         </div>
         <div class="barra"><i style="width:${f.pct ?? 0}%;background:${col}"></i></div>
@@ -351,6 +386,19 @@ function pintarResumen(c) {
     const b = e.target.closest('[data-r]'); if (!b) return;
     resSeg = b.dataset.r; pintarResumen(c);
   };
+}
+
+function mapa() {
+  const { celdas, hueco } = mapaMes(0);
+  const L = ['L','M','X','J','V','S','D'];
+  return `<div class="mapa">
+    ${L.map(x => `<span class="mapaCab">${x}</span>`).join('')}
+    ${Array.from({length: hueco}, () => '<span></span>').join('')}
+    ${celdas.map(c => `<span class="mapaDia ${c.futuro ? 'futuro' : ''}"
+      title="${c.num}: ${c.pct === null ? 'nada que cumplir' : c.pct + '%'}"
+      style="${c.pct === null ? '' : `background:var(--hogar);opacity:${0.15 + (c.pct/100)*0.85}`}"
+      >${c.num}</span>`).join('')}
+  </div>`;
 }
 
 function mejorSub(serie) {

@@ -44,10 +44,12 @@ de sobra este uso.
 - Presupuesto del mes y límites por categoría, combinables y ambos opcionales
 - Fecha y hora manuales, para efectivo o recibos atrasados
 - Listado por meses con filtro por categoría y edición al tocar
-- Métricas del mes: variación frente al mes anterior, media diaria, día más caro,
-  proyección a fin de mes, desglose por categoría y evolución de seis meses
-- Métricas del año: media mensual, mes más caro y más contenido, balance y tasa de
-  ahorro anual, gasto mes a mes y reparto por categoría con su media mensual
+- Métricas del mes: variación frente al mes anterior y frente a tu media trimestral, media
+  diaria, días sin gastar, día más caro, proporción de gasto fijo, tasa de ahorro y de
+  esfuerzo, proyección a fin de mes, desglose por categoría y evolución de seis meses
+- Métricas del año: media mensual, mes más caro y más contenido, balance y tasa de ahorro,
+  meses cerrados en positivo, meses dentro del presupuesto, reparto fijo frente a variable,
+  gasto mes a mes y desglose por categoría con su media mensual
 - Importación desde CSV con detección de duplicados y autocategorización
 - Exportación a CSV
 - Gastos fijos que se registran solos cada mes
@@ -342,10 +344,19 @@ La pestaña Hoy, por el mismo motivo, muestra solo los hábitos del día.
 | Ventana | Gráfico | Métricas propias |
 |---|---|---|
 | Semana | día a día, L–D | días redondos, cumplidos, lo que queda, sesiones extra |
-| Mes | semana a semana | días redondos, hábitos al 100%, cumplidos, extras |
-| Año | mes a mes | cumplidos del año, días redondos, mejor mes, hábitos al 100% |
+| Mes | semana a semana + mapa de calor | días redondos, hábitos al 100%, fallos dobles, recuperación |
+| Año | mes a mes | cumplidos del año, días redondos, mejor mes, recuperación |
+
+Además, en las ventanas de mes y año hay un desglose **por día de la semana**, que señala tu
+día flojo. Cada hábito muestra su racha actual y su mejor racha histórica.
 
 Un **día redondo** es un día ya transcurrido en el que se cumplió todo lo que tocaba ese día.
+
+Dos métricas menos obvias, tomadas de lo que funciona en las apps de hábitos: los **fallos
+dobles** (dos periodos seguidos sin cumplir) y la **tasa de recuperación** (de las veces que
+fallaste, cuántas volviste al periodo siguiente). La racha premia la perfección y se rompe con
+un despiste; lo que de verdad predice que un hábito se consolide es no fallar dos veces
+seguidas. Por eso conviven con la racha en vez de sustituirla.
 Las tres ventanas comparan además con el periodo anterior en puntos porcentuales, y señalan
 el hábito que mejor llevas y el que más se te resiste.
 
@@ -634,6 +645,11 @@ mal y hay que borrarlo y rehacerlo.
 
 **"No se pudo conectar".** La dirección está mal escrita o le falta el `https://`.
 Comprueba `/salud` en el navegador.
+
+**Sincroniza sin decir nada, o lleva días parada.** Ajustes → Sincronización → **Diagnóstico**
+prueba por separado la red del dispositivo, el Worker sin clave, la lectura autenticada y una
+escritura, con los tiempos de cada paso. Las peticiones tienen un tope de 15 segundos: sin él,
+una conexión colgada dejaba la sincronización bloqueada hasta reiniciar la app.
 
 **Veo datos distintos en Safari y en el icono.** Es el comportamiento de iOS: almacenamientos
 separados. Configura el Worker en ambos.

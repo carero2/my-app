@@ -498,6 +498,15 @@ function pintarMes(c) {
   const porDia = {};
   gs.filter(g => !esIngreso(g)).forEach(g => { const k = dia(g.t); porDia[k] = (porDia[k]||0) + g.c });
   const top = Object.entries(porDia).sort((a,b) => b[1]-a[1])[0];
+  /* Días sin gastar: métrica clásica de las apps de presupuesto, y la única
+     que mide una decisión en vez de una cantidad. */
+  const sinGastar = diasPasados - Object.keys(porDia).length;
+  /* Un mes suelto es ruido; la media de los tres anteriores es mejor vara. */
+  const trimestre = [1,2,3].map(i => gastado(off - i)).filter(x => x > 0);
+  const mediaPrev = trimestre.length
+    ? trimestre.reduce((s,x) => s+x, 0) / trimestre.length : null;
+  const esfuerzo = entra > 0 ? Math.round((total / entra) * 100) : null;
+  const ratioFijo = total > 0 ? Math.round((fijoMes / total) * 100) : 0;
 
   /* Cada categoría se mide contra su propio límite; si no tiene, contra el
      presupuesto del mes, y si tampoco lo hay, contra el gasto total. */
@@ -515,6 +524,9 @@ function pintarMes(c) {
       <div class="delta">${delta === null ? 'Sin mes anterior con el que comparar'
         : (delta >= 0 ? '▲ ' : '▼ ') + Math.abs(delta).toFixed(0) + '% respecto a ' +
           nombreMes(off-1).split(' ')[0].toLowerCase()}</div>
+      ${mediaPrev ? `<div class="delta">${total > mediaPrev ? '▲ ' : '▼ '}${
+        Math.abs(Math.round(((total - mediaPrev)/mediaPrev)*100))}% respecto a tu media de los
+        últimos ${trimestre.length} meses <span class="num">(${eur0(mediaPrev)})</span></div>` : ''}
       ${presu ? `<div class="barra" style="margin-top:14px"><i class="${total>presu?'pasado':''}"
           style="width:${Math.min(total/presu,1)*100}%"></i></div>
         <div class="delta">${total <= presu
@@ -526,18 +538,28 @@ function pintarMes(c) {
       <div class="mini"><b class="num" style="color:var(--ingreso)">${eur0(entra)}</b><small>ingresos</small></div>
       <div class="mini"><b class="num" style="${entra-total<0?'color:var(--alerta)':''}">
         ${entra-total>=0?'+':''}${eur0(entra-total)}</b><small>balance del mes</small></div>
-      <div class="mini"><b class="num">${entra > 0 ? Math.max(0,Math.round((1-total/entra)*100)) : 0}%</b>
+      <div class="mini"><b class="num">${Math.max(0,Math.round((1-total/entra)*100))}%</b>
         <small>de lo que entra, ahorrado</small></div>
+      <div class="mini"><b class="num ${esfuerzo > 100 ? 'rojo' : ''}">${esfuerzo}%</b>
+        <small>de tus ingresos, gastado</small></div>
+    </div>
+    <div class="rejilla">
       <div class="mini"><b class="num">${eur0(media)}</b><small>gasto al día</small></div>
+      <div class="mini"><b class="num">${sinGastar}</b><small>días sin gastar</small></div>
+      <div class="mini"><b class="num">${ratioFijo}%</b><small>del gasto es fijo</small></div>
+      <div class="mini"><b class="num">${proyectable ? eur0(proyeccion) : '—'}</b>
+        <small>${proyectable ? 'proyección a fin de mes' : 'proyección desde el día 7'}</small></div>
     </div>` : `<div class="rejilla">
       <div class="mini"><b class="num">${eur0(media)}</b><small>al día de media</small></div>
-      <div class="mini"><b class="num">${gs.length}</b><small>movimientos</small></div>
+      <div class="mini"><b class="num">${sinGastar}</b><small>días sin gastar</small></div>
       <div class="mini"><b class="num">${eur0(top[1])}</b><small>el ${new Date(desdeClave(top[0]))
         .toLocaleDateString('es-ES',{day:'numeric',month:'short'})}, el día más caro</small></div>
       <div class="mini"><b class="num">${proyectable ? eur0(proyeccion) : '—'}</b>
         <small>${enCurso ? (proyectable ? 'proyección a fin de mes' : 'proyección desde el día 7')
                          : 'gasto medio del mes'}</small></div>
-    </div>`}
+    </div>
+    ${fijoMes ? `<p class="pieNota">${eur0(fijoMes)} de gasto fijo, el ${ratioFijo}% del total.
+      Lo variable, que es donde puedes actuar, son ${eur0(total - fijoMes)}.</p>` : ''}`}
 
     <div class="panel">
       <div style="font-size:15px;color:var(--muted)">En qué se te va${
@@ -611,6 +633,19 @@ function pintarAnio(c) {
       s: gs.filter(g => g.cat === x.id && !esIngreso(g)).reduce((s,g) => s+g.c, 0) }))
     .filter(x => x.s > 0).sort((a,b) => b.s - a.s);
 
+  /* Meses cerrados en positivo y reparto fijo/variable: dos lecturas que un
+     total anual esconde. */
+  let enVerde = 0, conDatos = 0;
+  for (let m = 0; m < mesesVividos; m++) {
+    const o = offDeMes(m, anioOff);
+    const g = gastado(o), i = ingresado(o);
+    if (g || i) { conDatos++; if (i - g > 0) enVerde++ }
+  }
+  const fijoAnio = gs.filter(g => g.fijo && !esIngreso(g)).reduce((s,g) => s+g.c, 0);
+  const presu = presupuesto();
+  const bajoPresu = presu ? Array.from({length: mesesVividos}, (_, m) =>
+    gastado(offDeMes(m, anioOff))).filter(v => v > 0 && v <= presu).length : null;
+
   cuerpo.innerHTML = `
     <div class="panel">
       <div class="granCifra num">${eur(total)}</div>
@@ -637,8 +672,19 @@ function pintarAnio(c) {
         ${entra-total>=0?'+':''}${eur0(entra-total)}</b><small>balance</small></div>
       <div class="mini"><b class="num">${Math.max(0, Math.round((1-total/entra)*100))}%</b>
         <small>de lo que entra, ahorrado</small></div>
-      <div class="mini"><b class="num">${eur0((entra-total)/mesesVividos)}</b>
-        <small>ahorro mensual medio</small></div>
+      <div class="mini"><b class="num">${enVerde}/${conDatos}</b>
+        <small>meses cerrados en positivo</small></div>
+    </div>` : ''}
+
+    ${fijoAnio || bajoPresu !== null ? `<div class="rejilla">
+      ${fijoAnio ? `<div class="mini"><b class="num">${eur0(fijoAnio)}</b>
+          <small>gasto fijo del año</small></div>
+        <div class="mini"><b class="num">${eur0(total - fijoAnio)}</b>
+          <small>gasto variable</small></div>` : ''}
+      ${bajoPresu !== null ? `<div class="mini"><b class="num">${bajoPresu}/${mesesVividos}</b>
+        <small>meses dentro del presupuesto</small></div>` : ''}
+      ${entra > 0 ? `<div class="mini"><b class="num">${eur0((entra-total)/mesesVividos)}</b>
+        <small>ahorro mensual medio</small></div>` : ''}
     </div>` : ''}
 
     <div class="panel">

@@ -309,3 +309,93 @@ export function serieResumen(rango, off = 0) {
     return { ...t, deb, hec, pct: deb ? Math.round((hec / deb) * 100) : null, futuro: false };
   });
 }
+
+
+/* ==========================================================================
+   Estadísticas de comportamiento
+   La racha por sí sola engaña: premia la perfección y castiga un despiste.
+   Lo que predice que un hábito se consolide es la tasa de cumplimiento y,
+   sobre todo, no fallar dos periodos seguidos.
+   ========================================================================== */
+
+/** Serie más larga de periodos cumplidos en todo el historial. */
+export function mejorRacha(h) {
+  if (!esObjetivo(h)) return 0;
+  const frec = frecDe(h);
+  const hechos = new Set(datos.registros.filter(r => r.hab === h.id)
+    .filter(r => h.tipo === 'sino' ? r.v >= 1 : r.v >= (h.objetivo || 1)).map(r => r.d));
+  if (!hechos.size) return 0;
+  const salto = (p, dir) => { let q = periodoAtras(frec, p, dir), t = 0;
+    while (!toca(h, q) && t++ < 400) q = periodoAtras(frec, q, dir); return q };
+  let mejor = 0;
+  for (const p of hechos) {
+    if (hechos.has(salto(p, -1))) continue;          // no es el final de una serie
+    let n = 0, q = p, t = 0;
+    while (hechos.has(q) && t++ < 400) { n++; q = salto(q, 1) }
+    mejor = Math.max(mejor, n);
+  }
+  return mejor;
+}
+
+/** Fallos, fallos dobles y capacidad de volver al día siguiente. */
+export function recuperacion(h, iniMs, finMs) {
+  if (!esObjetivo(h)) return null;
+  const frec = frecDe(h);
+  const actual = periodo(frec, Date.now());
+  const ps = periodosEn(h, iniMs, finMs).filter(p => toca(h, p) && p !== actual);
+  let fallos = 0, dobles = 0, recuperados = 0;
+  for (let i = 0; i < ps.length; i++) {
+    if (cumplido(h, ps[i])) continue;
+    fallos++;
+    const sig = ps[i + 1];
+    if (!sig) continue;
+    cumplido(h, sig) ? recuperados++ : dobles++;
+  }
+  return { fallos, dobles, recuperados,
+           tasa: fallos ? Math.round((recuperados / fallos) * 100) : null };
+}
+
+/** Cumplimiento por día de la semana: casi todo el mundo tiene un día flojo
+ *  del que no es consciente. Solo mira hábitos diarios. */
+export function porDiaSemana(iniMs, finMs) {
+  const diarios = activos().filter(h => frecDe(h) === 'dia' && esObjetivo(h));
+  const tabla = DIAS.map(([n, l]) => ({ n, letra: l, deb: 0, hec: 0 }));
+  if (!diarios.length) return tabla;
+  /* El día en curso queda fuera: todavía puede completarse y hundiría
+     artificialmente el porcentaje de ese día de la semana. */
+  let d = dia(iniMs);
+  const tope = diaSuma(dia(Math.min(finMs, Date.now())), -1);
+  let guarda = 0;
+  while (d <= tope && guarda++ < 400) {
+    const n = ((desdeDia(d).getDay() + 6) % 7) + 1;
+    const celda = tabla[n - 1];
+    for (const h of diarios) {
+      if (!toca(h, d) || d < periodo('dia', h.t || 0)) continue;
+      celda.deb++;
+      if (cumplido(h, d)) celda.hec++;
+    }
+    d = diaSuma(d, 1);
+  }
+  return tabla.map(c => ({ ...c, pct: c.deb ? Math.round((c.hec / c.deb) * 100) : null }));
+}
+
+/** Rejilla del mes para el mapa de calor: un valor por día. */
+export function mapaMes(off = 0) {
+  const base = new Date();
+  const primero = new Date(base.getFullYear(), base.getMonth() + off, 1);
+  const ultimo = new Date(base.getFullYear(), base.getMonth() + off + 1, 0).getDate();
+  const diarios = activos().filter(h => frecDe(h) === 'dia' && esObjetivo(h));
+  const hoy = dia();
+  const celdas = [];
+  for (let i = 1; i <= ultimo; i++) {
+    const d = dia(new Date(primero.getFullYear(), primero.getMonth(), i, 12).getTime());
+    if (d > hoy) { celdas.push({ d, num: i, pct: null, futuro: true }); continue }
+    let deb = 0, hec = 0;
+    for (const h of diarios) {
+      if (!toca(h, d) || d < periodo('dia', h.t || 0)) continue;
+      deb++; if (cumplido(h, d)) hec++;
+    }
+    celdas.push({ d, num: i, deb, hec, pct: deb ? Math.round((hec / deb) * 100) : null, futuro: false });
+  }
+  return { celdas, hueco: (desdeDia(celdas[0].d).getDay() + 6) % 7 };
+}

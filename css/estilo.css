@@ -228,6 +228,18 @@ svg.graf{width:100%;height:110px;overflow:visible;margin-top:10px;display:block}
 .leerCab small{color:var(--muted);font-size:13px}
 .leerTexto{font-size:16px;line-height:1.6;white-space:normal;
   max-height:52vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+/* Barras por día de la semana */
+.semanaBarras{align-items:flex-end;margin-top:14px}
+.semanaBarras i{border-radius:5px 5px 2px 2px;margin-bottom:5px;min-height:3px}
+
+/* Mapa de calor del mes */
+.mapa{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:12px}
+.mapa span{aspect-ratio:1;display:grid;place-items:center;font-size:11px;border-radius:6px;
+  color:var(--muted)}
+.mapaCab{font-size:10px;color:var(--muted);aspect-ratio:auto!important;padding-bottom:2px}
+.mapaDia{background:var(--hueco);color:var(--ink)}
+.mapaDia.futuro{background:transparent;box-shadow:inset 0 0 0 1px var(--line);color:var(--muted);opacity:.5}
 .opciones.dias button{min-width:42px;text-align:center;padding:9px 0}
 .hab.hecho .hab-nom b{opacity:.55}
 .hab.hecho{background:linear-gradient(var(--card),var(--card))}

@@ -3,14 +3,14 @@
    pantalla no mezcle la clave del Worker con nueve casillas de euros.
    ========================================================================== */
 import {
-  datos, COLECCIONES, nube, ultimaSync, pendientes, ajuste,
-  configurarNube, probarNube, marcarTodoPendiente, sincronizar,
+  datos, COLECCIONES, nube, ultimaSync, ultimoError, pendientes, ajuste,
+  configurarNube, probarNube, marcarTodoPendiente, sincronizar, diagnostico,
   borrar, guardar, enLote, emitir, avisar, eur0, dia,
   abrirHoja, cerrarHoja,
 } from './nucleo.js';
 import * as fin from './finanzas.js';
 
-const VERSION = 'v13';
+const VERSION = 'v15';
 
 export function pintar(vista) {
   const n = pendientes();
@@ -21,7 +21,8 @@ export function pintar(vista) {
 
     <div class="grupo indice" style="margin-top:16px">
       <button data-h="nube"><span>Sincronización</span>
-        <small>${nube ? (n ? `${n} sin subir` : 'al día') : 'sin configurar'} ›</small></button>
+        <small class="${ultimoError ? 'rojo' : ''}">${
+          !nube ? 'sin configurar' : ultimoError ? 'con error' : n ? `${n} sin subir` : 'al día'} ›</small></button>
       <button data-h="presu"><span>Presupuesto</span>
         <small>${resumenPresu()} ›</small></button>
       <button data-h="cats"><span>Categorías</span>
@@ -64,8 +65,12 @@ function estado() {
         {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})
     : 'nunca';
   const n = pendientes();
-  return `Última sincronización: ${cuando}.` +
-    (n ? ` ${n} cambio${n === 1 ? '' : 's'} esperando a subir.` : '');
+  const dias = ultimaSync ? Math.floor((Date.now() - ultimaSync) / 86400000) : 99;
+  return (ultimoError ? `Último intento fallido: ${ultimoError}. ` : '') +
+    `Última sincronización: ${cuando}.` +
+    (n ? ` ${n} cambio${n === 1 ? '' : 's'} esperando a subir.` : '') +
+    (dias >= 1 && !ultimoError
+      ? ' Si lleva así varios días, prueba a cerrar la app del todo y volver a abrirla.' : '');
 }
 
 /* ---------- Sincronización ---------- */
@@ -86,6 +91,8 @@ function hojaNube(vista) {
       <button id="cfgAhora">Sincronizar</button>
       <button class="ok" id="cfgProbar">Guardar y comprobar</button>
     </div>
+    <div class="fila"><button id="cfgDiag">Diagnóstico</button></div>
+    <div id="diagSalida"></div>
     ${nube ? '<div class="fila"><button class="mal" id="cfgQuitar">Desconectar</button></div>' : ''}
     <p class="pieNota">Con la sincronización activa tus datos viven en tu Worker y este
       dispositivo guarda una copia para funcionar sin cobertura.</p>`,
@@ -117,6 +124,15 @@ function hojaNube(vista) {
     $('#cfgAhora').onclick = () => nube
       ? sincronizar({ ruidoso: true }).then(() => { cerrarHoja(); pintar(vista) })
       : avisar('Configura primero la dirección y la clave');
+    $('#cfgDiag').onclick = async () => {
+      const salida = $('#diagSalida');
+      salida.innerHTML = '<p class="pieNota">Comprobando…</p>';
+      const pasos = await diagnostico();
+      salida.innerHTML = '<div class="grupo" style="margin-top:12px">' + pasos.map(p =>
+        `<div><span>${p.ok ? '✓' : '✕'} ${p.nombre}</span>
+         <small class="${p.ok ? '' : 'rojo'}">${p.detalle}${p.ms ? ` · ${p.ms} ms` : ''}</small></div>`
+      ).join('') + '</div>';
+    };
     $('#cfgQuitar')?.addEventListener('click', () => {
       if (!confirm('Este dispositivo dejará de sincronizar. Los datos que ya tienes se conservan.')) return;
       configurarNube(null); cerrarHoja(); pintar(vista); avisar('Desconectado');

@@ -155,16 +155,64 @@ const limpiar = o => { const c = { ...o }; delete c.pend; return c };
 export const pendientes = () =>
   COLECCIONES.reduce((n, c) => n + datos[c].filter(x => x.pend).length + cola[c].length, 0);
 
+const LIMITE_MS = 15000;
 async function llamar(ruta, opciones = {}) {
   if (!nube) throw new Error('sin configurar');
-  const r = await fetch(nube.url.replace(/\/+$/, '') + ruta, {
-    ...opciones,
-    headers: { Authorization: 'Bearer ' + nube.clave,
-               'Content-Type': 'application/json', ...(opciones.headers || {}) },
+  /* Sin tiempo límite, una conexión que se queda colgada (típico al cambiar de
+     antena en móvil) deja la promesa sin resolver para siempre. */
+  const corte = new AbortController();
+  const reloj = setTimeout(() => corte.abort(), LIMITE_MS);
+  try {
+    const r = await fetch(nube.url.replace(/\/+$/, '') + ruta, {
+      ...opciones,
+      signal: corte.signal,
+      headers: { Authorization: 'Bearer ' + nube.clave,
+                 'Content-Type': 'application/json', ...(opciones.headers || {}) },
+    });
+    if (r.status === 401) throw new Error('clave');
+    if (!r.ok) throw new Error('http ' + r.status);
+    return await r.json();
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('tiempo');
+    throw e;
+  } finally {
+    clearTimeout(reloj);
+  }
+}
+
+/** Prueba las dos rutas por separado y mide tiempos, para saber si el problema
+ *  es de red, de clave o del Worker. */
+export async function diagnostico() {
+  const pasos = [];
+  const medir = async (nombre, fn) => {
+    const t0 = Date.now();
+    try { const r = await fn(); pasos.push({ nombre, ok:true, ms: Date.now()-t0, detalle: r }) }
+    catch (e) { pasos.push({ nombre, ok:false, ms: Date.now()-t0, detalle: e.message }) }
+  };
+  pasos.push({ nombre:'Conexión del dispositivo', ok: navigator.onLine, ms:0,
+               detalle: navigator.onLine ? 'en línea' : 'el sistema dice que no hay red' });
+  if (!nube) { pasos.push({ nombre:'Configuración', ok:false, ms:0, detalle:'sin URL ni clave' });
+               return pasos }
+
+  await medir('Worker vivo (sin clave)', async () => {
+    const corte = new AbortController();
+    const reloj = setTimeout(() => corte.abort(), LIMITE_MS);
+    try {
+      const r = await fetch(nube.url.replace(/\/+$/, '') + '/salud', { signal: corte.signal });
+      return 'respondió ' + r.status;
+    } finally { clearTimeout(reloj) }
   });
-  if (r.status === 401) throw new Error('clave');
-  if (!r.ok) throw new Error('http ' + r.status);
-  return r.json();
+  await medir('Lectura con clave', async () => {
+    const d = await llamar('/col/gastos');
+    return (d.items?.length ?? 0) + ' movimientos en el servidor';
+  });
+  await medir('Escritura de prueba', async () => {
+    const r = await llamar('/col/diagnostico', { method:'POST',
+      body: JSON.stringify({ id:'ping', t: Date.now() }) });
+    return r.ok ? 'aceptada' : 'rechazada';
+  });
+  pasos.push({ nombre:'Pendientes de subir', ok: true, ms:0, detalle: pendientes() + ' items' });
+  return pasos;
 }
 
 export function configurarNube(cfg) {
@@ -184,9 +232,14 @@ export function marcarTodoPendiente() {
 }
 
 let sincronizando = false;
+export let ultimoError = null;
+export let ultimoIntento = 0;
+
 export async function sincronizar({ ruidoso = false } = {}) {
-  if (!nube || sincronizando) return;
+  if (!nube) { if (ruidoso) avisar('Configura primero la dirección y la clave'); return }
+  if (sincronizando) { if (ruidoso) avisar('Ya hay una sincronización en marcha'); return }
   if (!navigator.onLine) { if (ruidoso) avisar('Sin conexión'); return }
+  ultimoIntento = Date.now();
   sincronizando = true;
   try {
     for (const col of COLECCIONES) {
@@ -214,13 +267,18 @@ export async function sincronizar({ ruidoso = false } = {}) {
       datos[col] = [...local.values()];
     }
     ultimaSync = Date.now();
+    ultimoError = null;
     localStorage.setItem(K.sync, ultimaSync);
     guardar(); emitir();
     if (ruidoso) avisar('Sincronizado');
   } catch (e) {
     const msg = e.message === 'clave' ? 'Clave incorrecta'
+              : e.message === 'tiempo' ? 'El servidor no respondió a tiempo'
               : e.message.startsWith('http') ? 'El servidor respondió ' + e.message.slice(5)
               : 'No se pudo conectar';
+    /* Se recuerda aunque el intento fuera silencioso: así Ajustes puede
+       explicar por qué lleva días sin sincronizar. */
+    ultimoError = msg;
     if (ruidoso) avisar(msg);
   } finally {
     sincronizando = false;
