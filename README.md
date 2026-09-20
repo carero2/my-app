@@ -53,7 +53,9 @@ de sobra este uso.
 - Importación desde CSV con detección de duplicados y autocategorización
 - Exportación a CSV
 - Gastos fijos que se registran solos cada mes
-- Búsqueda por concepto, categoría o importe
+- Búsqueda por concepto, categoría o importe, con filtro por rango de importe
+- Notas sugeridas a partir de las que ya has usado
+- Repetir un movimiento con una pulsación larga
 
 **Hábitos**
 - Grupos definidos por el usuario que funcionan como submódulos (trabajo, sueño…),
@@ -287,9 +289,18 @@ Separarlos mejora la proyección a fin de mes: los fijos no se promedian por dí
 enteros una sola vez. Con 750 € de alquiler el día 1 y 10 € diarios, a mitad de mes la
 proyección ingenua decía 1.800 € y la real son 1.050 €.
 
-**Buscar.** En Movimientos, el buscador filtra por concepto, categoría o importe, y mientras
-escribes ignora el mes seleccionado: busca en todo el histórico. En Notas busca en el título
-y en el texto.
+**Buscar.** En Movimientos, el buscador filtra por concepto, categoría o importe, y debajo hay
+un filtro **desde / hasta** para acotar por importe. Los dos se combinan, y con cualquiera
+activo se ignora el mes seleccionado: se busca en todo el histórico. Arriba de los resultados
+aparece el recuento, el total y la media de lo encontrado, que es lo que suele interesar
+(«¿cuánto llevo gastado en cafés este año?»). La ✕ quita todos los filtros de golpe.
+En Notas se busca en el título y en el texto.
+
+**Repetir un movimiento.** Una pulsación larga sobre cualquier fila de Movimientos crea una
+copia con la fecha de ahora, con opción de deshacer. Para el café de todos los días.
+
+**Notas sugeridas.** Al escribir una nota aparecen debajo las que ya has usado, ordenadas por
+frecuencia y filtradas por lo que llevas escrito.
 
 **Presupuesto.** Hay dos niveles independientes y compatibles, los dos opcionales:
 
@@ -394,11 +405,16 @@ Con el Worker desplegado, un atajo puede registrar un gasto **sin abrir la app**
    Si creas categorías nuevas, mira su identificador en Ajustes → Gestionar categorías
    y añádelo a esta lista
 3. **Elegir de la lista** → mensaje `Categoría`
-4. **Obtener contenido de una URL**:
+4. **Pedir entrada** → tipo Texto → `Nota (opcional)`
+5. **Obtener contenido de una URL**:
    - URL: `https://TU-WORKER.workers.dev/col/gastos`
    - Método: `POST`
    - Encabezado: `Authorization` = `Bearer TU_CLAVE`
-   - Cuerpo: JSON con `c` (Número, la entrada del paso 1) y `cat` (Texto, el elemento elegido)
+   - Cuerpo: JSON con `c` (Número, la entrada del paso 1), `cat` (Texto, el elemento elegido)
+     y `n` (Texto, la entrada del paso 4)
+
+El campo `n` es la nota y admite hasta 120 caracteres. Si lo dejas vacío, el movimiento se
+muestra con el nombre de su categoría, igual que antes.
 
 Ese atajo se puede disparar desde una automatización de **Transacción** (al pagar con Apple
 Pay), desde **Tocar atrás**, o desde el **Botón Acción**.
@@ -607,6 +623,12 @@ masivas (importar un CSV, borrar todo, reordenar) hay que envolverlas en `enLote
 núcleo, que aplaza todo eso al final: sin ella, importar 300 movimientos lanzaba 300
 peticiones al Worker y 300 repintados.
 
+El service worker ya no se releva solo: instala la versión nueva y espera. La app detecta
+que hay una esperando y ofrece un aviso con botón **Recargar**; solo entonces se le da el
+relevo y la página se recarga una vez. Así no se cambia el código bajo los pies del usuario
+a mitad de registrar un gasto, y deja de hacer falta cerrar la app dos veces para ver los
+cambios.
+
 **Al desplegar un cambio, sube el número de caché en `sw.js`:**
 
 ```js
@@ -646,6 +668,11 @@ mal y hay que borrarlo y rehacerlo.
 **"No se pudo conectar".** La dirección está mal escrita o le falta el `https://`.
 Comprueba `/salud` en el navegador.
 
+**Reintentos.** Cuando la sincronización falla por red, la app lo reintenta sola con espera
+creciente: 30 s, 1 min, 2, 4… hasta un tope de 15 minutos, y para en cuanto lo consigue. Un
+error de clave no se reintenta, porque no se arregla solo. Ajustes indica si hay un reintento
+programado.
+
 **Sincroniza sin decir nada, o lleva días parada.** Ajustes → Sincronización → **Diagnóstico**
 prueba por separado la red del dispositivo, el Worker sin clave, la lectura autenticada y una
 escritura, con los tiempos de cada paso. Las peticiones tienen un tope de 15 segundos: sin él,
@@ -681,7 +708,6 @@ o simplemente comprueba desde el navegador.
 
 - Gastos recurrentes marcados como fijos, para separarlos de los variables en la proyección
 - Cruzar módulos: comparar gasto con cumplimiento de hábitos
-- Aviso en la app cuando hay una versión nueva publicada
 - Reordenar hábitos arrastrando en lugar de con botones
 - Vista de calendario mensual por hábito, para ver huecos de un vistazo
 - Rotar la clave sin tener que actualizarla a mano en cada dispositivo

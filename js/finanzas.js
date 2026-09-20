@@ -195,8 +195,24 @@ function hojaFijo(f) {
   });
 }
 
+/** Notas que ya has usado, de la más repetida a la menos. Se ofrecen como
+    sugerencias al escribir: casi todo el mundo repite los mismos conceptos. */
+export function notasFrecuentes(prefijo = '') {
+  const p = prefijo.trim().toLowerCase();
+  const cuenta = new Map();
+  for (const g of datos.gastos) {
+    const n = (g.n || '').trim();
+    if (!n || (p && !n.toLowerCase().startsWith(p))) continue;
+    cuenta.set(n, (cuenta.get(n) || 0) + 1);
+  }
+  return [...cuenta.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 6).map(([n]) => n);
+}
+
 /* ---------- Estado del módulo ---------- */
 let sub = 'anadir', off = 0, filtro = null, busca = '', vistaMet = 'mes', anioOff = 0;
+let impMin = '', impMax = '';
 let buffer = '', catSel = null, tipoSel = 'gasto', nota = '', fechaSel = null, editando = null;
 /** Nunca devuelve una categoría archivada o inexistente: si la seleccionada
     desaparece, cae en la primera disponible. */
@@ -270,7 +286,10 @@ function pintarAnadir(c) {
       <button class="tipoSel ${tipoSel==='ingreso'?'puesto':''}" data-x="tipo" data-tipo="${tipoSel}">
         ${tipoSel==='ingreso' ? '↑ Ingreso' : '↓ Gasto'}</button>
       ${abierto.nota
-        ? `<input type="text" id="inNota" maxlength="60" placeholder="Nota" value="${escapar(nota)}">`
+        ? `<input type="text" id="inNota" maxlength="60" placeholder="Nota" value="${escapar(nota)}"
+             list="notasUsadas" autocomplete="off">
+           <datalist id="notasUsadas">${notasFrecuentes()
+             .map(n => `<option value="${escapar(n)}">`).join('')}</datalist>`
         : `<button data-x="nota" class="${nota?'puesto':''}">${nota ? '✎ '+escapar(nota) : 'Nota'}</button>`}
       ${abierto.fecha
         ? `<input type="datetime-local" id="inFecha" max="${paraInput(Date.now())}"
@@ -284,6 +303,7 @@ function pintarAnadir(c) {
     <div class="teclas" id="teclas">
       ${[1,2,3,4,5,6,7,8,9,',',0,'⌫'].map(k => `<button data-k="${k}">${k}</button>`).join('')}
     </div>
+    <div class="sugeridas" id="sugeridas"></div>
     <button class="principal ${tipoSel==='ingreso'?'verde':''}" id="guardar" ${valor()>0?'':'disabled'}>
       ${editando ? 'Guardar cambios' : tipoSel==='ingreso' ? 'Guardar ingreso' : 'Guardar gasto'}</button>`;
 
@@ -295,8 +315,17 @@ function pintarAnadir(c) {
   }
 
   const iN = c.querySelector('#inNota');
-  if (iN) { iN.oninput = e => nota = e.target.value;
-            iN.onblur = () => { abierto.nota = false; pintarAnadir(c) }; iN.focus() }
+  if (iN) {
+    iN.oninput = e => { nota = e.target.value; pintarSugerencias(c) };
+    /* El blur se retrasa: si no, tocar una sugerencia cierra el campo antes
+       de que llegue el clic. */
+    iN.onblur = () => setTimeout(() => {
+      if (document.activeElement?.id === 'inNota') return;
+      abierto.nota = false; pintarAnadir(c);
+    }, 180);
+    iN.focus();
+    pintarSugerencias(c);
+  }
   const iF = c.querySelector('#inFecha');
   if (iF) { iF.onchange = e => {
               const v = e.target.value ? new Date(e.target.value).getTime() : null;
@@ -339,6 +368,20 @@ function pintarAnadir(c) {
   };
 }
 
+function pintarSugerencias(c) {
+  const caja = c.querySelector('#sugeridas');
+  if (!caja) return;
+  const lista = abierto.nota ? notasFrecuentes(nota).filter(n => n !== nota.trim()) : [];
+  caja.innerHTML = lista.map(n =>
+    `<button data-nota="${escapar(n)}">${escapar(n)}</button>`).join('');
+  caja.onclick = e => {
+    const b = e.target.closest('[data-nota]'); if (!b) return;
+    nota = b.dataset.nota;
+    abierto.nota = false;
+    pintarAnadir(c);
+  };
+}
+
 function limpiar() {
   buffer = ''; catSel = null; tipoSel = 'gasto'; nota = ''; fechaSel = null; editando = null;
   abierto = { nota:false, fecha:false };
@@ -357,11 +400,18 @@ export function editarMovimiento(id) {
    ========================================================================== */
 function pintarLista(c) {
   const q = busca.trim().toLowerCase();
-  /* Al buscar se ignora el mes: lo que quieres es encontrarlo, esté donde esté. */
-  const gs = q
-    ? datos.gastos.filter(g => (g.n || '').toLowerCase().includes(q) ||
-        cat(g.cat).nom.toLowerCase().includes(q) || g.c.toFixed(2).replace('.', ',').includes(q))
-    : delMes(off);
+  const min = parseFloat(String(impMin).replace(',', '.'));
+  const max = parseFloat(String(impMax).replace(',', '.'));
+  const hayRango = isFinite(min) || isFinite(max);
+  const buscando = !!q || hayRango;
+
+  /* Con cualquier filtro activo se ignora el mes: lo que quieres es
+     encontrarlo, esté donde esté. */
+  let gs = buscando ? datos.gastos : delMes(off);
+  if (q) gs = gs.filter(g => (g.n || '').toLowerCase().includes(q) ||
+      cat(g.cat).nom.toLowerCase().includes(q) || g.c.toFixed(2).replace('.', ',').includes(q));
+  if (isFinite(min)) gs = gs.filter(g => g.c >= min);
+  if (isFinite(max)) gs = gs.filter(g => g.c <= max);
   const presentes = catsTodas().filter(x => gs.some(g => g.cat === x.id && !esIngreso(g)));
   if (filtro && !presentes.some(x => x.id === filtro)) filtro = null;
 
@@ -370,20 +420,39 @@ function pintarLista(c) {
       <input id="buscar" type="search" placeholder="Buscar concepto, categoría o importe"
         value="${escapar(busca)}" autocapitalize="off" autocorrect="off">
     </div>
-    <div class="navmes ${q ? 'oculto' : ''}" id="nav"></div>
+    <div class="rango">
+      <input id="impMin" type="number" inputmode="decimal" min="0" step="any"
+        placeholder="Desde €" value="${escapar(impMin)}">
+      <span>–</span>
+      <input id="impMax" type="number" inputmode="decimal" min="0" step="any"
+        placeholder="Hasta €" value="${escapar(impMax)}">
+      ${buscando ? '<button id="limpiar" aria-label="Quitar filtros">✕</button>' : ''}
+    </div>
+    <div class="navmes ${buscando ? 'oculto' : ''}" id="nav"></div>
     <div class="filtros" id="filtros"></div>
     <div id="cuerpo"></div>`;
 
-  const inp = c.querySelector('#buscar');
-  inp.oninput = e => {
-    busca = e.target.value;
-    const pos = e.target.selectionStart;
-    pintarLista(c);
-    const nuevo = c.querySelector('#buscar');
-    nuevo.focus(); nuevo.setSelectionRange(pos, pos);
+  /* Se repinta en cada tecla, así que hay que devolver el foco y el cursor. */
+  const vivo = (id, alCambiar) => {
+    const el = c.querySelector(id);
+    el.oninput = e => {
+      const pos = e.target.selectionStart;
+      alCambiar(e.target.value);
+      pintarLista(c);
+      const nuevo = c.querySelector(id);
+      if (!nuevo) return;
+      nuevo.focus();
+      try { nuevo.setSelectionRange(pos, pos) } catch { /* los number no lo admiten */ }
+    };
   };
+  vivo('#buscar', v => busca = v);
+  vivo('#impMin', v => impMin = v);
+  vivo('#impMax', v => impMax = v);
+  c.querySelector('#limpiar')?.addEventListener('click', () => {
+    busca = ''; impMin = ''; impMax = ''; pintarLista(c);
+  });
 
-  if (!q) navMes(c.querySelector('#nav'), off,
+  if (!buscando) navMes(c.querySelector('#nav'), off,
     n => { off = n; pintarLista(c) },
     datos.gastos.length ? Math.min(...datos.gastos.map(g => g.t)) : Date.now());
 
@@ -401,20 +470,29 @@ function pintarLista(c) {
   const vis = filtro ? gs.filter(g => g.cat === filtro) : gs;
   const cuerpo = c.querySelector('#cuerpo');
   if (!vis.length) {
-    cuerpo.innerHTML = `<p class="vacio">${q
-      ? 'Nada coincide con «' + escapar(busca) + '».'
-      : gs.length ? 'Nada en esta categoría este mes.'
+    cuerpo.innerHTML = `<p class="vacio">${buscando
+      ? 'Ningún movimiento cumple esos filtros.'
       : 'Sin movimientos en ' + nombreMes(off).toLowerCase() + '.'}</p>`;
     return;
   }
-  if (q) cuerpo.dataset.resumen = `${vis.length} resultado${vis.length===1?'':'s'} · ${
-    eur(vis.filter(g => !esIngreso(g)).reduce((s,g) => s+g.c, 0))}`;
+
+  /* Con filtros activos, el recuento y el total de lo encontrado es lo primero
+     que quieres saber: «¿cuánto llevo gastado en cafés este año?». */
+  const resumen = buscando ? (() => {
+    const sale = vis.filter(g => !esIngreso(g)).reduce((s,g) => s + g.c, 0);
+    const entra = vis.filter(esIngreso).reduce((s,g) => s + g.c, 0);
+    const media = sale / Math.max(1, vis.filter(g => !esIngreso(g)).length);
+    return `<div class="resultado">
+      <span>${vis.length} resultado${vis.length === 1 ? '' : 's'} en todo el histórico${
+        sale ? ` · media ${eur(media)}` : ''}</span>
+      <b class="num">${eur(sale)}${entra ? ` · +${eur(entra)}` : ''}</b></div>`;
+  })() : '';
 
   const hoy = dia();
   const dias = {};
   [...vis].sort((a,b) => b.t - a.t).forEach(g => (dias[dia(g.t)] ||= []).push(g));
 
-  cuerpo.innerHTML = Object.entries(dias).map(([d, gs2]) => {
+  cuerpo.innerHTML = resumen + Object.entries(dias).map(([d, gs2]) => {
     const neto = gs2.reduce((s,g) => s + (esIngreso(g) ? g.c : -g.c), 0);
     const etq = d === hoy ? 'Hoy'
       : new Date(gs2[0].t).toLocaleDateString('es-ES',{weekday:'long', day:'numeric', month:'short'});
@@ -437,7 +515,26 @@ function pintarLista(c) {
       }).join('')}</ul>`;
   }).join('');
 
+  /* Pulsación larga sobre una fila: repetir ese movimiento con la fecha de hoy.
+     El café de todos los días deja de necesitar teclado. */
+  let temporizador = null, largo = false;
+  const cancelar = () => { clearTimeout(temporizador); temporizador = null };
+  cuerpo.addEventListener('pointerdown', e => {
+    const fila = e.target.closest('li[data-id]');
+    if (!fila || e.target.closest('[data-borrar]')) return;
+    largo = false;
+    temporizador = setTimeout(() => {
+      largo = true;
+      navigator.vibrate?.(20);
+      repetir(fila.dataset.id);
+    }, 550);
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(ev =>
+    cuerpo.addEventListener(ev, cancelar));
+  cuerpo.addEventListener('scroll', cancelar, true);
+
   cuerpo.onclick = e => {
+    if (largo) { largo = false; return }   // la pulsación larga ya actuó
     const del = e.target.closest('[data-borrar]');
     if (del) {
       const it = borrar('gastos', del.dataset.borrar);
@@ -453,6 +550,17 @@ function pintarLista(c) {
 /* ==========================================================================
    Submódulo: métricas
    ========================================================================== */
+/** Crea una copia de un movimiento con la fecha de ahora. */
+export function repetir(id) {
+  const g = datos.gastos.find(x => x.id === id);
+  if (!g) return;
+  const nuevo = anadir('gastos',
+    { c: g.c, cat: g.cat, n: g.n || '', tipo: g.tipo || 'gasto', t: Date.now() });
+  avisar('Repetido ' + eur(g.c), { texto:'Deshacer',
+    alPulsar: () => { borrar('gastos', nuevo.id); emitir() } });
+  emitir();
+}
+
 function pintarMetricas(c) {
   c.innerHTML = `
     <div class="opciones" id="metSegs" style="margin-top:10px">

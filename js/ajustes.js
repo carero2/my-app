@@ -3,14 +3,14 @@
    pantalla no mezcle la clave del Worker con nueve casillas de euros.
    ========================================================================== */
 import {
-  datos, COLECCIONES, nube, ultimaSync, ultimoError, pendientes, ajuste,
+  datos, COLECCIONES, nube, ultimaSync, ultimoError, pendientes, ajuste, hayReintento,
   configurarNube, probarNube, marcarTodoPendiente, sincronizar, diagnostico,
   borrar, guardar, enLote, emitir, avisar, eur0, dia,
   abrirHoja, cerrarHoja,
 } from './nucleo.js';
 import * as fin from './finanzas.js';
 
-const VERSION = 'v15';
+const VERSION = 'v16';
 
 export function pintar(vista) {
   const n = pendientes();
@@ -66,7 +66,8 @@ function estado() {
     : 'nunca';
   const n = pendientes();
   const dias = ultimaSync ? Math.floor((Date.now() - ultimaSync) / 86400000) : 99;
-  return (ultimoError ? `Último intento fallido: ${ultimoError}. ` : '') +
+  return (ultimoError ? `Último intento fallido: ${ultimoError}.${
+      hayReintento() ? ' Se reintentará solo.' : ''} ` : '') +
     `Última sincronización: ${cuando}.` +
     (n ? ` ${n} cambio${n === 1 ? '' : 's'} esperando a subir.` : '') +
     (dias >= 1 && !ultimoError

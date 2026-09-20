@@ -268,6 +268,8 @@ export async function sincronizar({ ruidoso = false } = {}) {
     }
     ultimaSync = Date.now();
     ultimoError = null;
+    fallosSeguidos = 0;
+    pararReintentos();
     localStorage.setItem(K.sync, ultimaSync);
     guardar(); emitir();
     if (ruidoso) avisar('Sincronizado');
@@ -280,10 +282,30 @@ export async function sincronizar({ ruidoso = false } = {}) {
        explicar por qué lleva días sin sincronizar. */
     ultimoError = msg;
     if (ruidoso) avisar(msg);
+    /* Un error de clave no se arregla reintentando; uno de red, sí. */
+    if (e.message !== 'clave') programarReintento();
   } finally {
     sincronizando = false;
     refrescarGlobo();
   }
+}
+
+/* ---------- Reintentos ----------
+   Cuando la red falla, la app volvía a intentarlo solo al reabrirla. Con un
+   bloqueo intermitente eso deja cambios sin subir durante días. Aquí se
+   reintenta sola con espera creciente: 30 s, 1 min, 2, 4… hasta 15 minutos. */
+let fallosSeguidos = 0, relojReintento = null;
+export const hayReintento = () => !!relojReintento;
+const esperaActual = () => Math.min(30000 * 2 ** (fallosSeguidos - 1), 900000);
+
+function programarReintento() {
+  if (!nube || !pendientes()) return;          // sin nada que subir, no urge
+  fallosSeguidos++;
+  pararReintentos();
+  relojReintento = setTimeout(() => { relojReintento = null; sincronizar() }, esperaActual());
+}
+function pararReintentos() {
+  if (relojReintento) { clearTimeout(relojReintento); relojReintento = null }
 }
 function refrescarGlobo() {
   const g = document.getElementById('globoPend');
@@ -295,7 +317,9 @@ let temporizador;
 export function avisar(texto, accion) {
   const caja = document.getElementById('aviso');
   const btn  = document.getElementById('avisoAccion');
-  document.getElementById('avisoTxt').textContent = texto;
+  const txt  = document.getElementById('avisoTxt');
+  if (!caja || !btn || !txt) return;   // aún sin interfaz: no debe romper la escritura
+  txt.textContent = texto;
   clearTimeout(temporizador);
   if (accion) {
     btn.hidden = false; btn.textContent = accion.texto;

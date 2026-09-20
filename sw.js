@@ -1,4 +1,4 @@
-const CACHE = 'myapp-v15';
+const CACHE = 'myapp-v16';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './css/estilo.css',
@@ -9,13 +9,22 @@ const FILES = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  /* Sin skipWaiting: la versión nueva espera a que la app avise de que el
+     usuario ha aceptado recargar. Así no se cambia el código bajo sus pies. */
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
 });
+
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys()
     .then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
+
+/* La app pide el relevo cuando el usuario pulsa "Recargar". */
+self.addEventListener('message', e => {
+  if (e.data === 'relevo') self.skipWaiting();
+});
+
 // Red primero, caché como respaldo sin conexión.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;

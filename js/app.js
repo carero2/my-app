@@ -1,7 +1,7 @@
 /* ==========================================================================
    Arranque y navegación entre módulos.
    ========================================================================== */
-import { alCambiar, sincronizar, ultimaSync } from './nucleo.js';
+import { alCambiar, sincronizar, ultimaSync, avisar } from './nucleo.js';
 import * as hoy from './hoy.js';
 import * as finanzas from './finanzas.js';
 import * as habitos from './habitos-ui.js';
@@ -57,5 +57,34 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-if ('serviceWorker' in navigator)
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+/* ---------- Aviso de versión nueva ----------
+   El service worker instala la versión nueva pero se queda esperando: no se
+   cambia el código bajo los pies del usuario a mitad de un gasto. Cuando él
+   acepta, se le da el relevo y la página se recarga una sola vez. */
+if ('serviceWorker' in navigator) {
+  let recargando = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (recargando) return;
+    recargando = true;
+    location.reload();
+  });
+
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    const ofrecer = sw => {
+      if (!sw || !navigator.serviceWorker.controller) return;   // primera instalación
+      avisar('Hay una versión nueva', { texto:'Recargar',
+        alPulsar: () => sw.postMessage('relevo') });
+    };
+    if (reg.waiting) ofrecer(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const sw = reg.installing;
+      sw?.addEventListener('statechange', () => {
+        if (sw.state === 'installed') ofrecer(sw);
+      });
+    });
+    /* Busca actualizaciones al abrir y cada vez que se vuelve a la app. */
+    const mirar = () => reg.update().catch(() => {});
+    mirar();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) mirar() });
+  }).catch(() => {});
+}
