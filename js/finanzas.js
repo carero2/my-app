@@ -23,12 +23,33 @@ const SEMILLA = [
 export const PALETA_CAT = ['#C7513F','#3E6FA8','#8C8378','#D98A2B','#4E8A5B','#7A5BA6',
                            '#2F8C8C','#5F5A54','#B0447A','#5C7A1E'];
 
+/* Las semillas llevan _semilla: si el servidor ya tiene esa categoría (quizá
+   renombrada o recoloreada desde otro dispositivo), gana la del servidor en
+   vez de pisarla con los valores por defecto. */
 export function sembrarCategorias() {
-  if (ajuste('catsSembradas')) return;
-  enLote(() => SEMILLA.forEach((c, i) => {
-    if (!datos.categorias.some(x => x.id === c.id)) anadir('categorias', { ...c, orden: i });
-  }));
-  ajuste('catsSembradas', true);
+  if (!ajuste('catsSembradas')) {
+    enLote(() => SEMILLA.forEach((c, i) => {
+      if (!datos.categorias.some(x => x.id === c.id))
+        anadir('categorias', { ...c, orden: i, _semilla: true });
+    }));
+    ajuste('catsSembradas', true);
+  }
+  asegurarNoDefinido();
+}
+
+/** Destino de lo que no se sabe categorizar: pagos de comercios desconocidos
+    y filas de CSV sin pista. Se crea una vez; si la archivas, no vuelve. */
+export const NO_DEFINIDO = { id:'no-definido', nom:'No definido', emo:'❓', color:'#8C8378', orden: 99 };
+export function asegurarNoDefinido() {
+  if (!datos.categorias.some(c => c.id === NO_DEFINIDO.id))
+    anadir('categorias', { ...NO_DEFINIDO, _semilla: true });
+}
+export const sinCategoria = () =>
+  datos.gastos.filter(g => g.cat === NO_DEFINIDO.id && g.tipo !== 'ingreso');
+/** Abre Movimientos buscando lo que está en «No definido», en todo el histórico. */
+export function verSinCategoria() {
+  sub = 'lista'; filtro = null; impMin = ''; impMax = '';
+  busca = cat(NO_DEFINIDO.id).nom;
 }
 
 const porOrden = (a, b) => (a.orden ?? 0) - (b.orden ?? 0) || (a.t || 0) - (b.t || 0);
@@ -918,6 +939,7 @@ export function analizarCSV(texto) {
       c: Math.round(imp*100)/100,
       cat: porNombre(catBruta) || adivinarCat(p[iN] || p[iC] || ''),
       n: (p[iN] || '').slice(0, 60),
+      ...(p[iN] ? { com: p[iN].slice(0, 80) } : {}),
       tipo: /ingreso|abono|nomina|nómina/i.test(p[iT] || p[iN] || '') ? 'ingreso' : 'gasto',
       t: ms,
     });
@@ -950,19 +972,55 @@ export function porNombre(txt) {
   return c ? c.id : null;
 }
 
+/* ==========================================================================
+   Reconocimiento de comercios
+   MANTENER EN SINCRONÍA con las funciones equivalentes del Worker, que las
+   usa para el pop-up del atajo tras un pago.
+   ========================================================================== */
+const VACIAS = new Set(['sa','sl','slu','sau','sc','cb','inc','ltd','gmbh','de','del','la','el',
+  'los','las','y','en','es','eur','the','and','co']);
+const GENERICAS = new Set(['bar','restaurante','cafeteria','cafe','supermercado','super','tienda',
+  'farmacia','gasolinera','estacion','hotel','parking','panaderia','kiosko','kiosco','bazar',
+  'mercado','taberna','cerveceria','pizzeria','hostal','autoservicio','frutas','fruteria']);
+const normal = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+const palabrasComercio = s => normal(s).split(' ')
+  .filter(w => w.length > 1 && !/^\d+$/.test(w) && !VACIAS.has(w));
+export function mismoComercio(a, b) {
+  const pa = palabrasComercio(a), pb = palabrasComercio(b);
+  if (!pa.length || !pb.length || pa[0] !== pb[0] || pa[0].length < 3) return false;
+  if (GENERICAS.has(pa[0])) return pa[1] !== undefined && pa[1] === pb[1];
+  return true;
+}
+
 const REGLAS = [
-  [/mercadona|carrefour|lidl|aldi|dia |alcampo|super|frut|panader|restaurante|bar |cafe|cafeter|glovo|just eat|burger|pizza/i, 'comida'],
-  [/renfe|metro|emt|uber|cabify|taxi|gasolin|repsol|cepsa|bp |parking|peaje|bicing|bus/i, 'transporte'],
-  [/amazon|zara|decathlon|mediamarkt|corte ingles|primark|aliexpress|ikea/i, 'compras'],
-  [/cine|netflix|spotify|hbo|disney|steam|teatro|concierto|museo|discoteca|pub/i, 'ocio'],
-  [/alquiler|hipoteca|luz|endesa|iberdrola|naturgy|agua|gas |internet|movistar|vodafone|orange|comunidad/i, 'hogar'],
-  [/gimnasio|gym|basic ?fit|fitness|crossfit|padel|pádel|piscina|fisio|farmacia|clinic|dentist|medic/i, 'salud'],
-  [/booking|airbnb|hotel|hostal|ryanair|vueling|iberia|easyjet|aerolin|aeropuerto|vuelo|renfe ave|equipaje|maleta/i, 'viajes'],
+  [/mercadona|carrefour|lidl|aldi|\bdia\b|alcampo|eroski|consum|super|frut|panader|restaurante|\bbar\b|cafe|cafeter|glovo|just ?eat|burger|pizza|mcdonald|telepizza/, 'comida'],
+  [/renfe|metro|emt|uber|cabify|taxi|gasolin|repsol|cepsa|\bbp\b|galp|shell|parking|peaje|bicing|\bbus\b|alsa/, 'transporte'],
+  [/amazon|zara|decathlon|mediamarkt|corte ingles|primark|aliexpress|ikea|pull|bershka|mango|fnac/, 'compras'],
+  [/cine|netflix|spotify|hbo|disney|steam|teatro|concierto|museo|discoteca|\bpub\b|playstation/, 'ocio'],
+  [/alquiler|hipoteca|endesa|iberdrola|naturgy|movistar|vodafone|orange|comunidad|leroy|bricomart/, 'hogar'],
+  [/gimnasio|\bgym\b|basic ?fit|fitness|crossfit|padel|piscina|fisio|farmacia|clinic|dentist|medic/, 'salud'],
+  [/booking|airbnb|hotel|hostal|ryanair|vueling|iberia|easyjet|aerolin|aeropuerto|equipaje/, 'viajes'],
 ];
-const adivinarCat = txt => {
-  const id = REGLAS.find(([re]) => re.test(txt))?.[1];
-  return id && datos.categorias.some(c => c.id === id) ? id : 'otros';
-};
+
+/** Categoría para un concepto: primero lo que hiciste antes en ese mismo
+    comercio (si una categoría reúne el 60%), luego las reglas, y si nada
+    encaja, «No definido». */
+export function adivinarCat(texto) {
+  const activas = cats().filter(c => c.id !== NO_DEFINIDO.id);
+  const existe = id => activas.some(c => c.id === id);
+  const previos = datos.gastos.filter(g => g.tipo !== 'ingreso' && existe(g.cat) &&
+    mismoComercio(texto, g.com || g.n));
+  if (previos.length) {
+    const cuenta = new Map();
+    for (const g of previos) cuenta.set(g.cat, (cuenta.get(g.cat) || 0) + 1);
+    const [id, n] = [...cuenta.entries()].sort((a, b) => b[1] - a[1])[0];
+    return n / previos.length >= 0.6 ? id : NO_DEFINIDO.id;
+  }
+  const t = normal(texto);
+  const regla = REGLAS.find(([re, id]) => re.test(t) && existe(id));
+  return regla ? regla[1] : NO_DEFINIDO.id;
+}
 
 
 /* ==========================================================================

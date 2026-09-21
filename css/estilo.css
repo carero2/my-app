@@ -296,6 +296,7 @@ svg.graf{width:100%;height:110px;overflow:visible;margin-top:10px;display:block}
 .tarjetaAccion .mas{width:38px;height:38px;border-radius:50%;background:var(--ink);color:var(--paper);
   display:grid;place-items:center;font-size:21px;flex:none;line-height:1}
 .tarjetaAccion .txt small{display:block}
+.tarjetaAccion.pendiente .mas{background:var(--hueco);color:var(--ink);font-size:17px}
 
 /* ---------- Aviso y hoja modal ---------- */
 .aviso{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translate(-50%,10px);

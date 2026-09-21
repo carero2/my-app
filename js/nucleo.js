@@ -130,6 +130,7 @@ export function actualizar(col, id, cambios) {
   const it = datos[col].find(x => x.id === id);
   if (!it) return null;
   Object.assign(it, cambios, { pend: true });
+  delete it._semilla;   // editado a mano: ya es intención del usuario, no un valor por defecto
   tocado(col);
   return it;
 }
@@ -146,12 +147,14 @@ export function borrar(col, id) {
  *  y esa lápida volvería a borrarlo en la siguiente sincronización. */
 export function restaurar(col, item) {
   cola[col] = cola[col].filter(x => x !== item.id);
-  datos[col].push({ ...item, id: uid(), pend: true });
+  const copia = { ...item, id: uid(), pend: true };
+  delete copia._semilla;
+  datos[col].push(copia);
   tocado(col);
 }
 
 /* ---------- Sincronización ---------- */
-const limpiar = o => { const c = { ...o }; delete c.pend; return c };
+const limpiar = o => { const c = { ...o }; delete c.pend; delete c._semilla; return c };
 export const pendientes = () =>
   COLECCIONES.reduce((n, c) => n + datos[c].filter(x => x.pend).length + cola[c].length, 0);
 
@@ -243,6 +246,21 @@ export async function sincronizar({ ruidoso = false } = {}) {
   sincronizando = true;
   try {
     for (const col of COLECCIONES) {
+      /* Valores por defecto sin tocar (_semilla): si el servidor ya tiene ese
+         item, se adopta el suyo en vez de pisarlo. Evita que abrir la app en
+         un dispositivo nuevo resetee categorías renombradas en otro. */
+      const semillas = datos[col].filter(x => x.pend && x._semilla);
+      if (semillas.length) {
+        const { items = [], borrados = [] } = await llamar('/col/' + col);
+        const remotos = new Map(items.map(r => [r.id, r]));
+        const tumbas = new Set(borrados);
+        for (const s of semillas) {
+          if (remotos.has(s.id)) { Object.assign(s, remotos.get(s.id)); delete s.pend }
+          else if (tumbas.has(s.id)) s._descartar = true;
+        }
+        datos[col] = datos[col].filter(x => !x._descartar);
+      }
+
       const suben = datos[col].filter(x => x.pend);
       for (let i = 0; i < suben.length; i += 200) {
         await llamar('/col/' + col, { method:'POST',

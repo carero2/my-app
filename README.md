@@ -397,7 +397,63 @@ mensual cuenta meses. El periodo en curso no rompe la racha mientras aún pueda 
 
 ## Integración con Atajos de iOS
 
-Con el Worker desplegado, un atajo puede registrar un gasto **sin abrir la app**:
+### Tras pagar con Apple Pay: el pop-up ya relleno
+
+La automatización de **Transacción** entrega el importe y el comercio de cualquier tarjeta de
+Wallet. El atajo se los pasa al Worker, que devuelve una sugerencia, y el pop-up aparece con el
+importe y la nota ya escritos y la categoría sugerida la primera de la lista. Nada se guarda
+hasta que confirmas.
+
+**Cómo se sugiere la categoría:**
+
+1. **Por historial.** Busca tus gastos anteriores en ese mismo comercio, aunque cambie la tienda
+   o la ciudad («MERCADONA 4521 VALENCIA» y «MERCADONA 1120 MADRID» son el mismo). Si una
+   categoría reúne al menos el 60% de ellos, se sugiere.
+2. **Por reglas**, si nunca pagaste ahí: supermercados, gasolineras, aerolíneas, etc.
+3. **Nada**, si no lo reconoce: la lista sale sin sugerencia y tienes que elegir.
+
+Si el historial está repartido (Amazon: a veces Compras, a veces Hogar), no decide por ti,
+pero pone esas categorías arriba. Al final de la lista siempre aparece **❓ No definido**,
+para cuando no quieras decidir en ese momento; la pestaña Hoy te recuerda lo que queda ahí.
+
+La nota sugerida es la última que escribiste en ese comercio, o su nombre limpio («Mercadona»).
+Al guardar se conserva además el nombre original del datáfono en el campo `com`, que es lo que
+permite reconocerlo la próxima vez aunque edites la nota.
+
+Atajos no permite dejar marcada de antemano una opción de una lista: por eso la sugerida va
+la primera con ✓ y basta un toque.
+
+**El atajo** (automatización → Transacción → tus tarjetas → *Notificar* en vez de *Ejecutar
+inmediatamente*):
+
+1. **Obtener contenido de URL**: `POST https://TU-WORKER.workers.dev/sugerir`, encabezado
+   `Authorization: Bearer TU_CLAVE`, cuerpo JSON con `comercio` (Texto: *Entrada del atajo →
+   Comerciante*) e `importe` (Texto: *Entrada del atajo → Importe*).
+2. **Obtener valor del diccionario** `c` → **Pedir entrada** Número, `¿Cuánto?`, respuesta por
+   omisión ese valor → **Establecer variable** `importe`.
+3. **Obtener valor del diccionario** `lista` → **Elegir de la lista**, indicación: el valor
+   `pregunta` → **Establecer variable** `categoria`.
+4. **Obtener valor del diccionario** `n` → **Pedir entrada** Texto, `Nota`, respuesta por omisión
+   ese valor → **Establecer variable** `nota`.
+5. **Obtener contenido de URL**: `POST …/col/gastos` con `c` = `importe`, `cat` = `categoria`,
+   `n` = `nota`, `com` = *Comerciante*.
+6. **Mostrar notificación**: `Guardado`.
+
+Cada *Obtener valor del diccionario* toma como diccionario el resultado del paso 1: al elegir
+la variable, pulsa sobre ella y selecciona *Contenido de URL*.
+
+La categoría se envía tal cual la muestra la lista («✓ 🍽 Comida») y el Worker la traduce a su
+identificador, así que **no hace falta mantener en el atajo la lista de identificadores**:
+las categorías nuevas aparecen solas.
+
+Limitaciones del disparador, todas de Apple: solo salta con pagos sin contacto (ni compras web
+ni tarjeta física); a veces salta también con pagos rechazados; a veces falla esperando los
+datos del pago; y necesita que Wallet tenga permiso para usar datos móviles
+(Ajustes → Apps → Wallet).
+
+### Atajo manual
+
+Para efectivo o cualquier gasto sin pago con el móvil, un atajo sencillo sin la sugerencia:
 
 1. **Pedir entrada** → tipo Número → `¿Cuánto?`
 2. **Lista** con los identificadores de tus categorías, en minúsculas. Los iniciales son
@@ -416,8 +472,7 @@ Con el Worker desplegado, un atajo puede registrar un gasto **sin abrir la app**
 El campo `n` es la nota y admite hasta 120 caracteres. Si lo dejas vacío, el movimiento se
 muestra con el nombre de su categoría, igual que antes.
 
-Ese atajo se puede disparar desde una automatización de **Transacción** (al pagar con Apple
-Pay), desde **Tocar atrás**, o desde el **Botón Acción**.
+Ese atajo se puede disparar desde **Tocar atrás** o desde el **Botón Acción**.
 
 También puedes abrir la app en un punto concreto con parámetros de URL:
 
@@ -451,8 +506,9 @@ fecha;importe;categoria;nota;tipo
 
 - El separador puede ser punto y coma o coma; se detecta solo.
 - La fila de cabecera es opcional. Sin ella, se asume ese orden de columnas.
-- Si `categoria` va vacía, se deduce del concepto: reconoce cadenas de supermercados,
-  transporte, suministros, gimnasios y varias más.
+- Si `categoria` va vacía, se deduce del concepto con el mismo sistema que el pop-up del
+  atajo: primero tu historial en ese comercio y luego las reglas. Lo que no reconoce va a
+  **No definido**.
 - **Duplicados:** se omite cualquier fila con la misma fecha e importe que un movimiento ya
   registrado, así que puedes reimportar el mismo archivo sin miedo.
 
@@ -466,7 +522,8 @@ se envía al servidor.
 
 **gastos**
 ```js
-{ id, t, c: 12.4, cat: 'comida', n: 'Menú del día', tipo: 'gasto' | 'ingreso' }
+{ id, t, c: 12.4, cat: 'comida', n: 'Menú del día', tipo: 'gasto' | 'ingreso',
+  com: 'MERCADONA S.A. 4521' }   // com: comercio original, si vino de un pago o un CSV
 ```
 
 **habitos**
@@ -500,6 +557,9 @@ si vuelves a la periodicidad original.
 ```js
 { id: 'comida', t, nom: 'Comida', emo: '🍽', color: '#C7513F', orden: 0, archivada: false }
 ```
+La categoría `no-definido` se crea sola. Las categorías iniciales llevan en local una marca
+`_semilla` que nunca se sube: si el servidor ya tiene esa categoría, quizá renombrada desde
+otro dispositivo, se adopta la del servidor en vez de pisarla con los valores por defecto.
 
 **fijos** — plantillas de gasto recurrente
 ```js
@@ -545,6 +605,7 @@ Todas las rutas exigen la cabecera `Authorization: Bearer <clave>`, salvo `/salu
 | `GET` | `/col/<nombre>` | `{ items: [...], borrados: [ids] }` |
 | `POST` | `/col/<nombre>` | Inserta o actualiza. Acepta un objeto o un array |
 | `POST` | `/col/<nombre>/borrados` | Marca ids como borrados. Acepta uno o un array |
+| `POST` | `/sugerir` | `{ comercio, importe }` → importe limpio, nota, categoría sugerida y lista ordenada. No guarda nada |
 
 Las rutas antiguas `/gastos` y `/borrados` siguen funcionando como alias de
 `/col/gastos`, por compatibilidad con la primera versión de la app.

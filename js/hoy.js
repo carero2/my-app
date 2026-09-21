@@ -16,6 +16,7 @@ export function pintar(vista, ir) {
   const lista = hab.activos().filter(h => (h.frec || 'dia') === 'dia' && hab.toca(h));
   const delDia = lista.filter(hab.cuentaHoy);
   const hechos = delDia.filter(h => hab.cumplido(h)).length;
+  const porCategorizar = fin.sinCategoria();
 
   vista.innerHTML = `<div class="scroll">
     <div class="saludo">${saludo(hoy)}</div>
@@ -27,6 +28,13 @@ export function pintar(vista, ir) {
       <span class="txt"><b>Añadir gasto</b>
         <small>${gastoHoy ? 'Hoy llevas ' + eur(gastoHoy) : 'Nada registrado hoy'}</small></span>
     </button>
+
+    ${porCategorizar.length ? `<button class="tarjetaAccion pendiente" id="irSinCat">
+      <span class="mas">❓</span>
+      <span class="txt"><b>${porCategorizar.length} movimiento${porCategorizar.length === 1 ? '' : 's'}
+        sin categoría</b>
+        <small>${eur(porCategorizar.reduce((t, g) => t + g.c, 0))} por revisar</small></span>
+    </button>` : ''}
 
     <div class="panel">
       <div class="subtitulo" style="padding:0 0 6px">${nombreMes(0)}</div>
@@ -45,6 +53,9 @@ export function pintar(vista, ir) {
   </div>`;
 
   vista.querySelector('#irGasto').onclick = () => { fin.irASub('anadir'); ir('finanzas') };
+  vista.querySelector('#irSinCat')?.addEventListener('click', () => {
+    fin.verSinCategoria(); ir('finanzas');
+  });
 
   const caja = vista.querySelector('#habHoy');
   if (!lista.length) {
