@@ -380,22 +380,59 @@ export function porDiaSemana(iniMs, finMs) {
 }
 
 /** Rejilla del mes para el mapa de calor: un valor por día. */
-export function mapaMes(off = 0) {
+/* ---------- Calendario del mes, con ámbito ----------
+   ambito: {tipo:'todos'}                 · todos los diarios con objetivo
+           {tipo:'grupo',  valor:'Sueño'} · los diarios con objetivo de ese grupo
+           {tipo:'habito', valor:'<id>'}  · un hábito suelto, sea cual sea su frecuencia
+   Un hábito semanal o mensual no se cumple «un día»: en ese caso todos los días
+   de su periodo comparten el estado del periodo, y al tocar cualquiera se edita
+   el periodo entero. */
+export function calendarioMes(off = 0, ambito = { tipo: 'todos' }) {
   const base = new Date();
   const primero = new Date(base.getFullYear(), base.getMonth() + off, 1);
-  const ultimo = new Date(base.getFullYear(), base.getMonth() + off + 1, 0).getDate();
-  const diarios = activos().filter(h => frecDe(h) === 'dia' && esObjetivo(h));
+  const ultimo  = new Date(base.getFullYear(), base.getMonth() + off + 1, 0).getDate();
   const hoy = dia();
+  const uno = ambito.tipo === 'habito'
+    ? activos().find(h => h.id === ambito.valor) || archivados().find(h => h.id === ambito.valor)
+    : null;
+  const lote = uno ? [uno] : activos().filter(h =>
+    frecDe(h) === 'dia' && esObjetivo(h) &&
+    (ambito.tipo !== 'grupo' || (h.grupo || 'General') === ambito.valor));
+
+  const frec = uno ? frecDe(uno) : 'dia';
   const celdas = [];
   for (let i = 1; i <= ultimo; i++) {
-    const d = dia(new Date(primero.getFullYear(), primero.getMonth(), i, 12).getTime());
-    if (d > hoy) { celdas.push({ d, num: i, pct: null, futuro: true }); continue }
+    const ms = new Date(primero.getFullYear(), primero.getMonth(), i, 12).getTime();
+    const d  = dia(ms);
+    if (d > hoy) { celdas.push({ d, ms, num: i, p: null, pct: null, futuro: true }); continue }
+    const p = uno ? periodo(frec, ms) : d;
+    if (uno) {
+      const nacido = p >= periodo(frec, uno.t || 0);
+      const aplica = nacido && (frec !== 'dia' || toca(uno, d));
+      const v = aplica ? valorDe(uno, p) : 0;
+      const ok = aplica && cumplido(uno, p);
+      celdas.push({
+        d, ms, num: i, p, futuro: false, aplica, v, hecho: ok,
+        deb: aplica && esObjetivo(uno) ? 1 : 0, hec: ok ? 1 : 0,
+        pct: !aplica ? null
+           : !esObjetivo(uno) ? (v > 0 ? 100 : 0)
+           : ok ? 100
+           : uno.objetivo ? Math.min(99, Math.round((v / uno.objetivo) * 100)) : 0,
+      });
+      continue;
+    }
     let deb = 0, hec = 0;
-    for (const h of diarios) {
+    for (const h of lote) {
       if (!toca(h, d) || d < periodo('dia', h.t || 0)) continue;
       deb++; if (cumplido(h, d)) hec++;
     }
-    celdas.push({ d, num: i, deb, hec, pct: deb ? Math.round((hec / deb) * 100) : null, futuro: false });
+    celdas.push({ d, ms, num: i, p: d, deb, hec, aplica: deb > 0,
+      pct: deb ? Math.round((hec / deb) * 100) : null, futuro: false });
   }
-  return { celdas, hueco: (desdeDia(celdas[0].d).getDay() + 6) % 7 };
+  return {
+    celdas, hueco: (desdeDia(celdas[0].d).getDay() + 6) % 7,
+    uno, frec, lote,
+    primerDato: lote.length ? Math.min(...lote.map(h => h.t || Date.now())) : Date.now(),
+  };
 }
+

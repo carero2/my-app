@@ -349,22 +349,51 @@ export function avisar(texto, accion) {
 
 /* ---------- Hoja modal ---------- */
 let vigilarSalida = null;
+let focoPrevio = null;      // a dónde devolver el foco al cerrar
+
+const FOCABLES = 'button:not([disabled]),[href],input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])';
+
 /** opciones.sucio: función que devuelve true si hay cambios sin guardar.
  *  En ese caso, tocar fuera o pulsar Escape pide confirmación. */
 export function abrirHoja(html, alMontar, opciones = {}) {
   const fondo = document.getElementById('hoja');
   const caja  = document.getElementById('hojaCaja');
+  // Sólo se recuerda el foco de quien abrió la primera hoja de la pila.
+  if (!fondo.classList.contains('on')) focoPrevio = document.activeElement;
   caja.innerHTML = html;
   fondo.classList.add('on');
   fondo.setAttribute('aria-hidden', 'false');
+  caja.setAttribute('role', 'dialog');
+  caja.setAttribute('aria-modal', 'true');
   vigilarSalida = opciones.sucio || null;
   fondo.onclick = e => { if (e.target === fondo) intentarCerrar() };
   document.addEventListener('keydown', teclaHoja);
   alMontar?.(caja);
+  // El foco entra en la hoja: si no, el tabulador sigue recorriendo la pantalla
+  // de detrás. Se posa en la propia hoja salvo que algo pida el foco a propósito:
+  // así no salta el teclado del móvil cada vez que se abre una.
+  const primero = caja.querySelector('[autofocus]');
+  if (primero) primero.focus();
+  else { caja.tabIndex = -1; caja.focus() }
 }
-function teclaHoja(e) { if (e.key === 'Escape') intentarCerrar() }
-function intentarCerrar() {
-  if (vigilarSalida?.() && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')) return;
+function teclaHoja(e) {
+  if (e.key === 'Escape') { intentarCerrar(); return }
+  if (e.key !== 'Tab') return;
+  // Cepo de foco: el tabulador da la vuelta dentro de la hoja.
+  const caja = document.getElementById('hojaCaja');
+  const f = [...caja.querySelectorAll(FOCABLES)].filter(el => el.offsetParent !== null);
+  if (!f.length) return;
+  const primero = f[0], ultimo = f[f.length - 1];
+  if (!caja.contains(document.activeElement)) { e.preventDefault(); primero.focus(); return }
+  if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus() }
+  else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus() }
+}
+async function intentarCerrar() {
+  if (vigilarSalida?.() && !await confirmar({
+    titulo: 'Descartar los cambios',
+    cuerpo: 'Lo que has escrito en esta hoja no se guardará.',
+    si: 'Descartar cambios', no: 'Seguir editando'
+  })) return;
   cerrarHoja();
 }
 export function cerrarHoja() {
@@ -374,15 +403,78 @@ export function cerrarHoja() {
   document.getElementById('hojaCaja').innerHTML = '';
   document.removeEventListener('keydown', teclaHoja);
   vigilarSalida = null;
+  // El foco vuelve al botón que abrió la hoja, no al principio de la página.
+  if (focoPrevio?.isConnected) focoPrevio.focus();
+  focoPrevio = null;
+}
+
+/* ---------- Confirmación con nombre ---------- */
+/** Sustituye a confirm(): dice qué se va a borrar y con qué verbo, y arranca
+ *  con el foco en el botón que no destruye nada.
+ *  confirmar({titulo, cuerpo, si, no}) -> Promise<boolean> */
+export function confirmar({ titulo, cuerpo = '', si = 'Borrar', no = 'Cancelar' }) {
+  return new Promise(listo => {
+    const fondo = document.getElementById('confirma');
+    const caja  = document.getElementById('confirmaCaja');
+    const antes = document.activeElement;
+    caja.innerHTML =
+      `<h3 id="confirmaTit">${escapar(titulo)}</h3>
+       ${cuerpo ? `<p>${escapar(cuerpo)}</p>` : ''}
+       <div class="fila">
+         <button data-r="0" autofocus>${escapar(no)}</button>
+         <button data-r="1" class="mal">${escapar(si)}</button>
+       </div>`;
+    fondo.classList.add('on');
+    fondo.setAttribute('aria-hidden', 'false');
+    caja.setAttribute('aria-labelledby', 'confirmaTit');
+    const botones = [...caja.querySelectorAll('button')];
+    botones[0].focus();                       // Escape y Cancelar son lo mismo
+    const cerrar = r => {
+      fondo.classList.remove('on');
+      fondo.setAttribute('aria-hidden', 'true');
+      caja.innerHTML = '';
+      document.removeEventListener('keydown', tecla, true);
+      if (antes?.isConnected) antes.focus();
+      listo(r);
+    };
+    function tecla(e) {
+      if (e.key === 'Escape') { e.stopPropagation(); cerrar(false) }
+      else if (e.key === 'Tab') {                    // cepo dentro del diálogo
+        e.preventDefault();
+        const i = botones.indexOf(document.activeElement);
+        botones[(i + (e.shiftKey ? botones.length - 1 : 1)) % botones.length].focus();
+      }
+    }
+    document.addEventListener('keydown', tecla, true);
+    caja.onclick = e => {
+      const b = e.target.closest('button[data-r]');
+      if (b) cerrar(b.dataset.r === '1');
+    };
+    fondo.onclick = e => { if (e.target === fondo) cerrar(false) };
+  });
+}
+
+/* ---------- Estado vacío ---------- */
+/** Tres piezas obligatorias: qué falta, por qué está vacío y el botón que lo llena.
+ *  El botón lleva [data-vacio] para que quien lo pinta le enganche el click. */
+export function vacio({ titulo, cuerpo = '', accion = '' }) {
+  return `<div class="vacio"><b>${escapar(titulo)}</b>
+    ${cuerpo ? `<p>${escapar(cuerpo)}</p>` : ''}
+    ${accion ? `<button type="button" data-vacio>${escapar(accion)}</button>` : ''}</div>`;
 }
 
 /* ---------- Navegación por mes, reutilizada por varios módulos ---------- */
 export function navMes(destino, off, alCambiarMes, primerDato) {
   destino.innerHTML =
-    `<button data-d="-1" ${inicioMes(off).getTime() > primerDato ? '' : 'disabled'} aria-label="Anterior">‹</button>
+    `<button data-d="-1" ${inicioMes(off).getTime() > primerDato ? '' : 'disabled'}
+       aria-label="Ver el mes anterior" data-tip="Mes anterior">‹</button>
      <b>${nombreMes(off)}</b>
-     <button data-d="1" ${off < 0 ? '' : 'disabled'} aria-label="Siguiente">›</button>`;
+     ${off ? '<button class="hoy" data-ir="0">Hoy</button>' : ''}
+     <button data-d="1" ${off < 0 ? '' : 'disabled'}
+       aria-label="Ver el mes siguiente" data-tip="Mes siguiente">›</button>`;
   destino.onclick = e => {
+    const ir = e.target.closest('button[data-ir]');
+    if (ir) { alCambiarMes(0); return }
     const b = e.target.closest('button[data-d]');
     if (b && !b.disabled) alCambiarMes(off + parseInt(b.dataset.d));
   };

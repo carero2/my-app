@@ -1,11 +1,11 @@
-const CACHE = 'myapp-v17';
+const CACHE = 'myapp-v19';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './css/estilo.css',
   './js/app.js', './js/nucleo.js', './js/hoy.js',
   './js/finanzas.js', './js/habitos.js', './js/habitos-ui.js',
   './js/notas.js', './js/ajustes.js',
-  './icons/icon-192.png',
+  './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', e => {

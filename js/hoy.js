@@ -1,7 +1,7 @@
 /* ==========================================================================
    Pestaña Hoy: lo que necesitas ver y tocar en el día en curso.
    ========================================================================== */
-import { datos, eur, eur0, dia, nombreMes } from './nucleo.js';
+import { datos, eur, eur0, dia, nombreMes, vacio } from './nucleo.js';
 import * as fin from './finanzas.js';
 import * as hab from './habitos.js';
 import * as habUI from './habitos-ui.js';
@@ -17,6 +17,7 @@ export function pintar(vista, ir) {
   const delDia = lista.filter(hab.cuentaHoy);
   const hechos = delDia.filter(h => hab.cumplido(h)).length;
   const porCategorizar = fin.sinCategoria();
+  const pendientesRev = fin.porRevisar();
 
   vista.innerHTML = `<div class="scroll">
     <div class="saludo">${saludo(hoy)}</div>
@@ -29,11 +30,19 @@ export function pintar(vista, ir) {
         <small>${gastoHoy ? 'Hoy llevas ' + eur(gastoHoy) : 'Nada registrado hoy'}</small></span>
     </button>
 
+    ${pendientesRev.length ? `<button class="tarjetaAccion pendiente" id="irRevisar">
+      <span class="mas">½</span>
+      <span class="txt"><b>Revisar ${pendientesRev.length} gasto${
+        pendientesRev.length === 1 ? '' : 's'}</b>
+        <small>Compartido${pendientesRev.length === 1 ? '' : 's'} · tu parte: ${
+          eur(pendientesRev.reduce((t, g) => t + g.c, 0))}</small></span>
+    </button>` : ''}
+
     ${porCategorizar.length ? `<button class="tarjetaAccion pendiente" id="irSinCat">
       <span class="mas">❓</span>
-      <span class="txt"><b>${porCategorizar.length} movimiento${porCategorizar.length === 1 ? '' : 's'}
-        sin categoría</b>
-        <small>${eur(porCategorizar.reduce((t, g) => t + g.c, 0))} por revisar</small></span>
+      <span class="txt"><b>Categorizar ${porCategorizar.length} movimiento${
+        porCategorizar.length === 1 ? '' : 's'}</b>
+        <small>${eur(porCategorizar.reduce((t, g) => t + g.c, 0))} sin categoría</small></span>
     </button>` : ''}
 
     <div class="panel">
@@ -53,15 +62,22 @@ export function pintar(vista, ir) {
   </div>`;
 
   vista.querySelector('#irGasto').onclick = () => { fin.irASub('anadir'); ir('finanzas') };
+  vista.querySelector('#irRevisar')?.addEventListener('click', () => {
+    fin.verPorRevisar(); ir('finanzas');
+  });
   vista.querySelector('#irSinCat')?.addEventListener('click', () => {
     fin.verSinCategoria(); ir('finanzas');
   });
 
   const caja = vista.querySelector('#habHoy');
   if (!lista.length) {
-    caja.innerHTML = `<p class="vacio">Sin hábitos todavía.
-      <button id="crearHab">Crear uno</button></p>`;
-    caja.querySelector('#crearHab').onclick = () => habUI.hojaHabito(null);
+    caja.innerHTML = vacio({
+      titulo: 'Aquí verás lo que toca hoy',
+      cuerpo: 'Cada hábito que crees con periodicidad diaria aparecerá en esta lista, '
+            + 'listo para marcar.',
+      accion: 'Crear mi primer hábito'
+    });
+    caja.querySelector('[data-vacio]').onclick = () => habUI.hojaHabito(null);
     return;
   }
   caja.innerHTML = lista.map(habUI.tarjeta).join('');

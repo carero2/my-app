@@ -6,11 +6,11 @@ import {
   datos, COLECCIONES, nube, ultimaSync, ultimoError, pendientes, ajuste, hayReintento,
   configurarNube, probarNube, marcarTodoPendiente, sincronizar, diagnostico,
   borrar, guardar, enLote, emitir, avisar, eur0, dia,
-  abrirHoja, cerrarHoja,
+  abrirHoja, cerrarHoja, confirmar,
 } from './nucleo.js';
 import * as fin from './finanzas.js';
 
-const VERSION = 'v17';
+const VERSION = 'v19';
 
 export function pintar(vista) {
   const n = pendientes();
@@ -134,8 +134,13 @@ function hojaNube(vista) {
          <small class="${p.ok ? '' : 'rojo'}">${p.detalle}${p.ms ? ` · ${p.ms} ms` : ''}</small></div>`
       ).join('') + '</div>';
     };
-    $('#cfgQuitar')?.addEventListener('click', () => {
-      if (!confirm('Este dispositivo dejará de sincronizar. Los datos que ya tienes se conservan.')) return;
+    $('#cfgQuitar')?.addEventListener('click', async () => {
+      if (!await confirmar({
+        titulo: 'Desconectar este dispositivo de la nube',
+        cuerpo: 'Dejará de sincronizar. Los datos que ya tienes aquí se conservan, '
+              + 'y los de la nube también.',
+        si: 'Desconectar', no: 'Cancelar'
+      })) return;
       configurarNube(null); cerrarHoja(); pintar(vista); avisar('Desconectado');
     });
   });
@@ -231,9 +236,14 @@ function hojaDatos(vista) {
         copia[c] = datos[c].map(x => { const y = {...x}; delete y.pend; return y });
       bajar(JSON.stringify(copia), `my-app-${dia()}.json`, 'application/json');
     };
-    $('#borrarTodo').onclick = () => {
+    $('#borrarTodo').onclick = async () => {
       if (!items) return avisar('Ya está vacío');
-      if (!confirm(`Se borrarán ${items} items${nube ? ', aquí y en la nube' : ''}. No se puede deshacer.`)) return;
+      if (!await confirmar({
+        titulo: `Borrar los ${items} registros de My-app`,
+        cuerpo: `Se borrarán movimientos, hábitos, notas y categorías${
+          nube ? ', aquí y en la nube' : ''}. No se puede deshacer: exporta una copia antes si la quieres.`,
+        si: `Borrar los ${items}`, no: 'Cancelar'
+      })) return;
       enLote(() => { for (const c of COLECCIONES) [...datos[c]].forEach(x => borrar(c, x.id)) });
       ajuste('catsSembradas', null);
       fin.sembrarCategorias();

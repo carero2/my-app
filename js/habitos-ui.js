@@ -4,8 +4,8 @@
    ========================================================================== */
 import {
   datos, anadir, actualizar, borrar, restaurar, ajuste, enLote,
-  dia, diaSuma, lunes, periodo, periodoAtras, etiquetaPeriodo,
-  escapar, avisar, abrirHoja, cerrarHoja, emitir,
+  dia, diaSuma, desdeDia, lunes, periodo, periodoAtras, etiquetaPeriodo, nombreMes, navMes,
+  escapar, avisar, abrirHoja, cerrarHoja, confirmar, emitir, vacio,
 } from './nucleo.js';
 import {
   TIPOS, FRECS, PALETA, DIAS, RANGOS,
@@ -13,7 +13,7 @@ import {
   toca, esObjetivo, cuentaHoy, valorDe, cumplido, racha, fijarValor,
   cronoActivo, arrancarCrono, pararCrono, minutosCrono, reloj,
   redondo, acumulado, calcularResumen, serieResumen,
-  mejorRacha, recuperacion, porDiaSemana, mapaMes,
+  mejorRacha, recuperacion, porDiaSemana, calendarioMes,
 } from './habitos.js';
 
 /* Refresca los relojes en pantalla mientras haya un cronómetro en marcha. */
@@ -45,28 +45,32 @@ export function tarjeta(h) {
   let control = '';
   if (h.tipo === 'sino') {
     control = `<button class="marca ${hecho ? 'hecho' : ''}" data-acc="sino" data-h="${h.id}"
-      ${hecho ? `style="background:${col}"` : ''} aria-label="Marcar">✓</button>`;
+      ${hecho ? `style="background:${col}"` : ''} aria-label="Marcar ${escapar(h.nombre)} como hecho" data-tip="Marcar hecho">✓</button>`;
   } else if (h.tipo === 'cantidad') {
     control = `<div class="contador">
-      <button data-acc="menos" data-h="${h.id}" aria-label="Restar">−</button>
+      <button data-acc="menos" data-h="${h.id}" aria-label="Restar uno a ${escapar(h.nombre)}" data-tip="Restar uno">−</button>
       <div class="valor num" data-acc="fijar" data-h="${h.id}">${redondo(v)}
-        <small>${obj ? 'de ' + obj : ''} ${escapar(h.unidad || '')}</small></div>
-      <button data-acc="mas" data-h="${h.id}" aria-label="Sumar">+</button></div>`;
+        <small>${obj ? 'de ' + redondo(obj) : escapar(h.unidad || '')}</small></div>
+      <button data-acc="mas" data-h="${h.id}" aria-label="Sumar uno a ${escapar(h.nombre)}" data-tip="Sumar uno">+</button></div>`;
   } else {
     control = `<div class="crono">
       <span class="reloj num" data-reloj="${h.id}">${reloj(total)}</span>
       <button class="play ${enMarcha ? 'marcha' : ''}" data-acc="crono" data-h="${h.id}"
-        aria-label="${enMarcha ? 'Parar' : 'Empezar'}">${enMarcha ? '■' : '▶'}</button></div>`;
+        aria-label="${enMarcha ? 'Parar' : 'Empezar'} el cronómetro de ${escapar(h.nombre)}"
+        data-tip="${enMarcha ? 'Parar' : 'Empezar'}">${enMarcha ? '■' : '▶'}</button></div>`;
   }
 
   const r = racha(h);
   const unidades = frec === 'dia' ? ['día','días'] : frec === 'semana'
     ? ['semana','semanas'] : ['mes','meses'];
+  /* La concordancia depende del periodo: «2 días seguidos», «2 semanas seguidas». */
+  const seguido = frec === 'semana'
+    ? (r === 1 ? 'seguida' : 'seguidas') : (r === 1 ? 'seguido' : 'seguidos');
   /* En un día libre la tarjeta se atenúa, pero el control sigue activo:
      una sesión fuera de plan debe poder registrarse. */
   const sub = [
     frec === 'dia' ? diasTexto(h) : FRECS[frec].corto,
-    obj ? 'objetivo ' + (h.tipo === 'crono' ? obj + ' min' : obj + ' ' + (h.unidad || '')) : '',
+    obj && h.tipo !== 'cantidad' ? 'objetivo ' + obj + ' min' : '',
     esObjetivo(h) ? '' : 'solo seguimiento',
   ].filter(Boolean).join(' · ');
 
@@ -83,7 +87,7 @@ export function tarjeta(h) {
     ${h.tipo !== 'sino' || obj ? `<div class="barra"><i data-progreso="${h.id}"
       style="width:${pct}%;background:${col}"></i></div>` : ''}
     <div class="tira" data-tira="${h.id}">${tira(h, col)}</div>
-    ${r ? `<div class="racha">🔥 ${r} ${r === 1 ? unidades[0] : unidades[1]} seguidos</div>` : ''}
+    ${r ? `<div class="racha">🔥 ${r} ${r === 1 ? unidades[0] : unidades[1]} ${seguido}</div>` : ''}
   </div>`;
 }
 
@@ -102,27 +106,39 @@ function tira(h, col) {
     return h.tipo === 'sino' ? (v >= 1 ? 1 : 0) : Math.min(v / (h.objetivo || 1), 1);
   };
   const ahora = periodo(frec, Date.now());
-  const celda = (p, etq, futuro) => {
+  /* Cada celda es un botón de verdad: se pulsa para corregir ese periodo,
+     así que necesita nombre propio y los 44px de alto que suman barra y etiqueta. */
+  const celda = (p, etq, futuro, largo) => {
     const off = !futuro && !toca(h, p);
     const pct = futuro ? 0 : relleno(p);
-    return `<div data-p="${p}" data-h="${h.id}" class="${p === ahora ? 'ahora' : ''}">
+    return `<button type="button" data-p="${p}" data-h="${h.id}" ${futuro ? 'disabled' : ''}
+      class="${p === ahora ? 'ahora' : ''}"
+      aria-label="${escapar(h.nombre)}, ${largo || etq}: ${
+        futuro ? 'aún no ha llegado' : off && !pct ? 'no tocaba'
+        : pct >= 1 ? 'cumplido' : pct > 0 ? 'a medias' : 'sin hacer'}">
       <i class="${futuro ? 'futuro' : ''} ${off && !pct ? 'apagado' : ''}"
-      style="${pct ? `background:${col};opacity:${0.3 + pct * 0.7}` : ''}"></i>${etq}</div>`;
+      style="${pct ? `background:${col};opacity:${0.3 + pct * 0.7}` : ''}"></i>${etq}</button>`;
   };
 
   if (frec === 'dia') {
     const base = dia(lunes().getTime()), hoy = dia();
+    const nombres = ['lunes','martes','miércoles','jueves','viernes','sábado','domingo'];
     return DIAS.map(([, letra], i) => {
       const p = diaSuma(base, i);
-      return celda(p, letra, p > hoy);
+      return celda(p, letra, p > hoy, nombres[i]);
     }).join('');
   }
-  const n = frec === 'semana' ? 8 : 6;
+  const n = frec === 'semana' ? 7 : 6;
   const actual = periodo(frec, Date.now());
   const celdas = [];
   for (let i = n - 1; i >= 0; i--) {
     const p = periodoAtras(frec, actual, i);
-    celdas.push(celda(p, etiquetaPeriodo(frec, p), false));
+    /* Con ocho celdas en 375px sólo cabe una palabra: el día del lunes de esa
+       semana, o las tres letras del mes. La etiqueta larga va en el aria-label. */
+    const largo = etiquetaPeriodo(frec, p);
+    const corta = frec === 'semana' ? desdeDia(p.slice(1)).getDate() : largo;
+    celdas.push(celda(p, corta, false,
+      frec === 'semana' ? 'semana del ' + largo : largo));
   }
   return celdas.join('');
 }
@@ -158,12 +174,14 @@ export function conectar(contenedor) {
 /* ==========================================================================
    Vista del módulo
    ========================================================================== */
-let seg = null;      // null = Todos · 'resumen' · 'archivados' · nombre de grupo
+let seg = null;      // null = Todos · 'resumen' · 'calendario' · 'archivados' · nombre de grupo
 let resSeg = 'semana';   // ventana del resumen: semana · mes · ano
+let calOff = 0;          // mes que muestra el calendario, 0 = el actual
+let calAmb = '';         // ámbito del calendario: '' · 'g:<grupo>' · 'h:<id>'
 
 export function pintar(vista) {
   const gs = grupos();
-  if (seg && !['resumen','archivados'].includes(seg) && !gs.includes(seg)) seg = null;
+  if (seg && !['resumen','calendario','archivados'].includes(seg) && !gs.includes(seg)) seg = null;
   const arch = archivados().length;
 
   vista.innerHTML = `<div class="scroll">
@@ -175,9 +193,10 @@ export function pintar(vista) {
           : `border-color:${c}66`}"><i class="pinta" style="background:${c}"></i>${escapar(g)}</button>` }).join('')}
     </div>
     <div class="acciones">
-      <button class="accion ${seg === 'resumen' ? 'on' : ''}" data-g="resumen">📊 Resumen</button>
+      <button class="accion ${seg === 'resumen' ? 'on' : ''}" data-g="resumen">Resumen</button>
+      <button class="accion ${seg === 'calendario' ? 'on' : ''}" data-g="calendario">Calendario</button>
       ${arch ? `<button class="accion ${seg === 'archivados' ? 'on' : ''}"
-        data-g="archivados">🗄 Archivados</button>` : ''}
+        data-g="archivados">Archivados</button>` : ''}
       <button class="accion nuevo" data-g="+">+ Hábito</button>
     </div>
     <div id="habCuerpo"></div></div>`;
@@ -191,14 +210,20 @@ export function pintar(vista) {
 
   const cuerpo = vista.querySelector('#habCuerpo');
   if (seg === 'resumen')    return pintarResumen(cuerpo);
+  if (seg === 'calendario') return pintarCalendario(cuerpo);
   if (seg === 'archivados') return pintarArchivados(cuerpo);
 
   const lista = activos().filter(h => !seg || (h.grupo || 'General') === seg);
   if (!lista.length) {
-    cuerpo.innerHTML = `<p class="vacio">
-      ${datos.habitos.length ? 'No hay hábitos en este grupo.' : 'Todavía no has creado ningún hábito.'}
-      <button id="crear">Crear el primero</button></p>`;
-    cuerpo.querySelector('#crear').onclick = () => hojaHabito(null);
+    cuerpo.innerHTML = vacio({
+      titulo: datos.habitos.length ? 'Este grupo no tiene hábitos' : 'Aún no sigues ningún hábito',
+      cuerpo: datos.habitos.length
+        ? `Ningún hábito activo pertenece a «${seg}». Crea uno aquí o cambia de grupo.`
+        : 'Un hábito puede ser un sí/no, una cantidad que sumas a lo largo del día '
+          + 'o un cronómetro. Tú eliges el grupo y cada cuánto toca.',
+      accion: datos.habitos.length ? 'Crear un hábito en este grupo' : 'Crear mi primer hábito'
+    });
+    cuerpo.querySelector('[data-vacio]').onclick = () => hojaHabito(null);
     return;
   }
 
@@ -229,13 +254,24 @@ export function anillo(lista) {
   return `<div class="resumenDia">
     <div class="anillo" style="--pct:${pct}">
       <span class="num">${hechos}<small>/${delDia.length}</small></span></div>
-    <div><b>${hechos === delDia.length ? '¡Todo hecho por hoy!' : 'Vas por buen camino'}</b>
+    <div><b>${hechos === delDia.length ? '¡Todo hecho por hoy!'
+      : hechos === 0 ? 'Nada marcado aún'
+      : 'Vas por buen camino'}</b>
       <small>de lo que toca hoy${otros ? ` · ${otros} fuera del cómputo` : ''}</small></div>
   </div>`;
 }
 
 function pintarResumen(c) {
-  if (!activos().length) { c.innerHTML = '<p class="vacio">Nada que resumir todavía.</p>'; return }
+  if (!activos().length) {
+    c.innerHTML = vacio({
+      titulo: 'Todavía no hay nada que resumir',
+      cuerpo: 'El resumen calcula constancia, rachas y mapa del mes en cuanto '
+            + 'tengas un hábito con registros.',
+      accion: 'Crear mi primer hábito'
+    });
+    c.querySelector('[data-vacio]').onclick = () => hojaHabito(null);
+    return;
+  }
 
   const R = RANGOS[resSeg];
   const r = calcularResumen(resSeg);
@@ -307,13 +343,13 @@ function pintarResumen(c) {
     </div>
 
     ${serie.some(x => x.pct !== null) ? `<div class="panel">
-      <div style="font-size:15px;color:var(--muted)">${
+      <div class="rotulo">${
         R.sub === 'dia' ? 'Día a día' : R.sub === 'semana' ? 'Semana a semana' : 'Mes a mes'}</div>
       ${grafSerie(serie)}
     </div>` : ''}
 
     ${resSeg !== 'semana' && semanal.some(x => x.pct !== null) ? `<div class="panel">
-      <div style="font-size:15px;color:var(--muted)">Por día de la semana</div>
+      <div class="rotulo">Por día de la semana</div>
       <div class="tira semanaBarras">${semanal.map(x => `<div>
         <i style="height:${x.pct === null ? 0 : Math.max(x.pct * 0.34, 3)}px;
            background:var(--ink);opacity:${x.pct === null ? 0.12 : 0.3 + x.pct/143}"></i>
@@ -324,8 +360,10 @@ function pintarResumen(c) {
     </div>` : ''}
 
     ${resSeg === 'mes' ? `<div class="panel">
-      <div style="font-size:15px;color:var(--muted)">Mapa del mes</div>
-      ${mapa()}
+      <div class="rotulo">Día a día del mes</div>
+      <p class="pieNota" style="padding:4px 0 0">El calendario enseña el mes completo, y puedes
+        mirarlo por sección o quedarte con un solo hábito.</p>
+      <button class="accion" id="irCal" style="margin-top:14px">Abrir el calendario</button>
     </div>` : ''}
 
     ${dobles || fallos ? `<div class="panel" style="padding:15px">
@@ -366,7 +404,11 @@ function pintarResumen(c) {
         </div>
         <div class="barra"><i style="width:${f.pct ?? 0}%;background:${col}"></i></div>
       </div>`;
-    }).join('') : '<p class="vacio">Nada registrado en este periodo.</p>'}
+    }).join('') : vacio({
+      titulo: `Sin registros ${RANGOS[resSeg].etq}`,
+      cuerpo: 'Ninguno de tus hábitos con objetivo tenía algo que cumplir en esta ventana. '
+            + 'Prueba con un rango más amplio.'
+    })}
 
     ${r.seguimiento.length ? `<div class="etiqueta">Solo seguimiento</div>
       <p class="pieNota" style="padding:0 4px 4px">Se registran pero no son objetivos,
@@ -386,20 +428,198 @@ function pintarResumen(c) {
     const b = e.target.closest('[data-r]'); if (!b) return;
     resSeg = b.dataset.r; pintarResumen(c);
   };
+  c.querySelector('#irCal')?.addEventListener('click', () => {
+    seg = 'calendario'; calOff = 0;
+    pintar(document.getElementById('v-habitos'));
+  });
 }
 
-function mapa() {
-  const { celdas, hueco } = mapaMes(0);
-  const L = ['L','M','X','J','V','S','D'];
-  return `<div class="mapa">
-    ${L.map(x => `<span class="mapaCab">${x}</span>`).join('')}
-    ${Array.from({length: hueco}, () => '<span></span>').join('')}
-    ${celdas.map(c => `<span class="mapaDia ${c.futuro ? 'futuro' : ''}"
-      title="${c.num}: ${c.pct === null ? 'nada que cumplir' : c.pct + '%'}"
-      style="${c.pct === null ? '' : `background:var(--hogar);opacity:${0.15 + (c.pct/100)*0.85}`}"
-      >${c.num}</span>`).join('')}
-  </div>`;
+/* ==========================================================================
+   Calendario del mes. Se puede mirar entero, por grupo, o un hábito suelto:
+   son las tres preguntas distintas que te haces sobre un mes.
+   ========================================================================== */
+function ambitoDe() {
+  if (calAmb.startsWith('g:')) return { tipo: 'grupo',  valor: calAmb.slice(2) };
+  if (calAmb.startsWith('h:')) return { tipo: 'habito', valor: calAmb.slice(2) };
+  return { tipo: 'todos' };
 }
+
+function pintarCalendario(c) {
+  const amb = ambitoDe();
+  const { celdas, hueco, uno, frec, lote, primerDato } = calendarioMes(calOff, amb);
+  const col = uno ? colorDe(uno) : amb.tipo === 'grupo' ? colorGrupo(amb.valor) : '#3E6FA8';
+  const L = ['L','M','X','J','V','S','D'];
+
+  /* Un hábito semanal o mensual se cumple una vez por periodo, no una por día:
+     los días de un mismo periodo cuentan como uno solo en el total. */
+  const conDeb = celdas.filter(x => !x.futuro && x.deb);
+  const unicos = uno && frec !== 'dia'
+    ? [...new Map(conDeb.map(x => [x.p, x])).values()] : conDeb;
+  const hechos  = unicos.reduce((s,x) => s + x.hec, 0);
+  const debidos = unicos.reduce((s,x) => s + x.deb, 0);
+  const grupoSel = amb.tipo === 'grupo';
+
+  /* Un hábito de cantidad enseña su número en la casilla; el resto, el reparto. */
+  const enCasilla = x => {
+    if (!uno) return x.deb > 1 ? `${x.hec}/${x.deb}` : '';
+    if (uno.tipo === 'sino' || !x.v) return '';
+    return uno.tipo === 'crono' ? `${redondo(x.v)}m` : redondo(x.v);
+  };
+
+  c.innerHTML = `
+    <label class="campo" style="padding-top:12px">
+      <span>Qué se muestra en el calendario</span>
+      <select id="calAmb" class="selAncho">
+        <option value="" ${!calAmb ? 'selected' : ''}>Todos los hábitos diarios</option>
+        ${grupos().length ? `<optgroup label="Por sección">
+          ${grupos().map(g => `<option value="g:${escapar(g)}"
+            ${calAmb === 'g:' + g ? 'selected' : ''}>${escapar(g)}</option>`).join('')}
+        </optgroup>` : ''}
+        ${activos().length ? `<optgroup label="Un hábito concreto">
+          ${activos().map(h => `<option value="h:${escapar(h.id)}"
+            ${calAmb === 'h:' + h.id ? 'selected' : ''}>${escapar(h.nombre)} · ${
+            FRECS[frecDe(h)].corto}</option>`).join('')}
+        </optgroup>` : ''}
+      </select>
+    </label>
+
+    <div class="navmes" id="calNav"></div>
+
+    <div class="panel" style="margin-top:4px">
+      <div class="calCab" aria-hidden="true">${L.map(x => `<span>${x}</span>`).join('')}</div>
+      <div class="cal" id="calRejilla" role="group"
+        aria-label="Días de ${escapar(nombreMes(calOff))}">
+        ${Array.from({length: hueco}, () => '<i class="nada"></i>').join('')}
+        ${celdas.map(x => {
+          const hoy = x.d === dia();
+          /* Tres escalones en vez de un degradado: así el número del día
+             mantiene contraste sobre cualquier fondo, también en modo oscuro. */
+          const clase = x.futuro ? 'futuro'
+            : !x.aplica ? 'vacia'
+            : x.pct === 100 ? 'lleno'
+            : x.pct >= 50 ? 'parcial alto'
+            : x.pct > 0 ? 'parcial' : '';
+          const fondo = x.futuro || !x.aplica ? ''
+            : x.pct === 100 ? `background:${col}`
+            : x.pct >= 50 ? `background:color-mix(in srgb, ${col} 42%, var(--card))`
+            : x.pct > 0 ? `background:color-mix(in srgb, ${col} 18%, var(--card))` : '';
+          return `<button type="button" class="${clase} ${hoy ? 'hoy' : ''}"
+            data-d="${x.d}" ${x.futuro ? 'disabled' : ''} style="${fondo}"
+            aria-label="${x.num} de ${escapar(nombreMes(calOff))}: ${
+              x.futuro ? 'aún no ha llegado'
+              : !x.aplica ? 'no tocaba'
+              : uno ? (x.hecho ? 'cumplido' : 'sin cumplir')
+              : `${x.hec} de ${x.deb} cumplidos`}">
+            <span class="n num">${x.num}</span>
+            ${enCasilla(x) ? `<span class="v num">${enCasilla(x)}</span>` : ''}
+          </button>`;
+        }).join('')}
+      </div>
+      ${debidos ? `<div class="calTot">
+          <span>${uno ? (frec === 'dia' ? 'Días cumplidos' : 'Periodos cumplidos')
+            : grupoSel ? escapar(amb.valor) : 'Cumplido'}</span>
+          <b class="num">${hechos} de ${debidos} · ${Math.round((hechos/debidos)*100)}%</b>
+        </div>`
+        : `<div class="calTot"><span>${
+            uno ? 'Este hábito no tenía nada que cumplir en este mes.'
+            : grupoSel ? `Ningún hábito de «${escapar(amb.valor)}» tocaba en este mes.`
+            : 'Ningún hábito diario con objetivo tocaba en este mes.'
+          }</span></div>`}
+    </div>
+
+    <div class="calPie">
+      <span><i style="background:${col};border-color:transparent"></i>Todo</span>
+      <span><i style="background:color-mix(in srgb, ${col} 42%, var(--card));border-color:transparent"></i>Mitad o más</span>
+      <span><i style="background:color-mix(in srgb, ${col} 18%, var(--card))"></i>Algo</span>
+      <span><i style="background:var(--card)"></i>Nada</span>
+      <span><i style="background:var(--hueco);border-color:transparent"></i>No tocaba</span>
+    </div>
+
+    <p class="pieNota">${uno
+      ? (frec === 'dia'
+          ? 'Toca un día para registrar o corregir ese día.'
+          : `Este hábito es ${FRECS[frec].corto}: todos los días de ${
+             frec === 'semana' ? 'una misma semana' : 'un mismo mes'
+             } comparten el estado, y al tocar cualquiera editas el periodo entero.`)
+      : 'Toca un día para marcar de golpe lo que tocaba ese día.'}</p>`;
+
+  navMes(c.querySelector('#calNav'), calOff,
+    n => { calOff = n; pintarCalendario(c) }, primerDato);
+
+  c.querySelector('#calAmb').onchange = e => {
+    calAmb = e.target.value; calOff = 0; pintarCalendario(c);
+  };
+
+  c.querySelector('#calRejilla').onclick = e => {
+    const b = e.target.closest('button[data-d]'); if (!b || b.disabled) return;
+    const x = celdas.find(y => y.d === b.dataset.d); if (!x) return;
+    const volver = () => pintarCalendario(c);
+    if (uno) return hojaValor(uno, x.p, volver);
+    hojaDia(x.d, lote, volver);
+  };
+}
+
+/** Un día completo: todo lo que tocaba, editable de una vez. */
+function hojaDia(d, lote, alCerrar) {
+  const del = lote.filter(h => toca(h, d) && d >= periodo('dia', h.t || 0));
+  const fecha = desdeDia(d)
+    .toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
+
+  abrirHoja(`<h3>${fecha.replace(/^./, m => m.toUpperCase())}</h3>
+    <p>${del.length ? 'Marca o corrige lo que tocaba este día.' : ''}</p>
+    ${del.length ? del.map(h => {
+      const v = valorDe(h, d), col = colorDe(h);
+      return `<div class="filaCat2">
+        <span class="punto" style="background:${col}22;color:${col}">${h.emo || '•'}</span>
+        <span class="txt"><b>${escapar(h.nombre)}</b>
+          <small>${escapar(h.grupo || 'General')}${
+            h.tipo !== 'sino' && h.objetivo ? ` · objetivo ${h.objetivo}` : ''}</small></span>
+        ${h.tipo === 'sino'
+          ? `<button type="button" class="marca ${v >= 1 ? 'hecho' : ''}" data-sino="${h.id}"
+               aria-pressed="${v >= 1}" aria-label="Marcar ${escapar(h.nombre)} como hecho"
+               style="${v >= 1 ? `background:${col}` : ''}">✓</button>`
+          : `<input data-val="${h.id}" type="number" inputmode="decimal" step="any" min="0"
+               value="${v || ''}" placeholder="0" style="width:92px;text-align:right;flex:none"
+               aria-label="${h.tipo === 'crono' ? 'Minutos' : 'Cantidad'} de ${escapar(h.nombre)}">`}
+      </div>`;
+    }).join('')
+    : vacio({
+        titulo: 'Este día no tocaba nada',
+        cuerpo: 'Ninguno de los hábitos de este ámbito estaba programado para este día '
+              + 'de la semana, o todos se crearon después.'
+      })}
+    <div class="fila">
+      <button id="dCerrar">${del.length ? 'Cancelar' : 'Cerrar'}</button>
+      ${del.length ? '<button class="ok" id="dOk">Guardar el día</button>' : ''}
+    </div>`,
+  caja => {
+    caja.onclick = e => {
+      const b = e.target.closest('[data-sino]'); if (!b) return;
+      const on = b.getAttribute('aria-pressed') !== 'true';
+      b.setAttribute('aria-pressed', on);
+      b.classList.toggle('hecho', on);
+      const h = del.find(x => x.id === b.dataset.sino);
+      b.style.background = on ? colorDe(h) : '';
+    };
+    caja.querySelector('#dCerrar').onclick = () => { cerrarHoja(); alCerrar?.() };
+    caja.querySelector('#dOk')?.addEventListener('click', () => {
+      enLote(() => {
+        for (const h of del) {
+          if (h.tipo === 'sino') {
+            const b = caja.querySelector(`[data-sino="${h.id}"]`);
+            fijarValor(h, b.getAttribute('aria-pressed') === 'true' ? 1 : 0, d);
+          } else {
+            const i = caja.querySelector(`[data-val="${h.id}"]`);
+            fijarValor(h, parseFloat(i.value) || 0, d);
+          }
+        }
+      });
+      cerrarHoja(); emitir(); alCerrar?.();
+      avisar(`Guardado el ${desdeDia(d).toLocaleDateString('es-ES',{day:'numeric',month:'short'})}`);
+    });
+  });
+}
+
 
 function mejorSub(serie) {
   const conDatos = serie.filter(x => x.pct !== null && x.deb);
@@ -420,7 +640,7 @@ function grafSerie(serie) {
     }).join('')}
   </svg>
   <div style="display:flex;margin-top:8px">
-    ${serie.map(s => `<div style="flex:1;text-align:center;font-size:11px;line-height:1.5;
+    ${serie.map(s => `<div style="flex:1;text-align:center;font-size:var(--t-meta);line-height:1.5;
       color:var(--muted)">${s.etq}<br><span class="num">${
       s.pct === null ? '—' : s.pct + '%'}</span></div>`).join('')}
   </div>`;
@@ -441,7 +661,7 @@ function pintarArchivados(c) {
 /* ==========================================================================
    Registro de un periodo concreto, también pasado
    ========================================================================== */
-export function hojaValor(h, p = clave(h)) {
+export function hojaValor(h, p = clave(h), alCerrar) {
   const frec = frecDe(h);
   const hoy = periodo(frec, Date.now());
   const futuro = frec === 'dia' ? p > hoy : false;
@@ -477,7 +697,7 @@ export function hojaValor(h, p = clave(h)) {
     const $ = s => caja.querySelector(s);
     $('#vFecha').onchange = e => {
       pSel = e.target.value;
-      cerrarHoja(); hojaValor(h, pSel);          // se repinta con los datos de ese periodo
+      cerrarHoja(); hojaValor(h, pSel, alCerrar); // se repinta con los datos de ese periodo
     };
     $('#vSino')?.addEventListener('click', e => {
       const b = e.target.closest('[data-v]'); if (!b) return;
@@ -485,12 +705,12 @@ export function hojaValor(h, p = clave(h)) {
       caja.querySelectorAll('#vSino button').forEach(x =>
         x.setAttribute('aria-pressed', Number(x.dataset.v) === vSel));
     });
-    $('#vCancelar').onclick = cerrarHoja;
+    $('#vCancelar').onclick = () => { cerrarHoja(); alCerrar?.() };
     $('#vOk').onclick = () => {
       if (pSel > periodo(frec, Date.now()) && frec === 'dia') return avisar('Esa fecha aún no ha llegado');
       const valor = h.tipo === 'sino' ? vSel : (parseFloat($('#vVal').value) || 0);
       fijarValor(h, valor, pSel);
-      cerrarHoja(); emitir();
+      cerrarHoja(); emitir(); alCerrar?.();
       avisar(pSel === periodo(frec, Date.now()) ? 'Registrado'
         : 'Registrado en ' + etiquetaPeriodo(frec, pSel));
     };
@@ -552,7 +772,7 @@ export function hojaHabito(h) {
       const g = grupoActual();
       const actual = color || (existe() ? colorGrupo(g) : null) || siguienteColor();
       $('#hCol').innerHTML = PALETA.map(c => `<button data-c="${c}" style="background:${c}"
-        aria-pressed="${c === actual}" aria-label="Color"></button>`).join('');
+        aria-pressed="${c === actual}" aria-label="Usar el color ${c}"></button>`).join('');
       $('#hColNota').textContent = existe()
         ? `El color es de todo el grupo «${g}». Cambiarlo afecta a sus demás hábitos.`
         : `Grupo nuevo: este color quedará asociado a «${g}».`;

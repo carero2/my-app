@@ -5,7 +5,7 @@
    ========================================================================== */
 import {
   datos, anadir, actualizar, borrar, restaurar, ajuste, enLote,
-  escapar, avisar, abrirHoja, cerrarHoja, emitir,
+  escapar, avisar, abrirHoja, cerrarHoja, confirmar, emitir, vacio,
 } from './nucleo.js';
 
 /* Cada categoría tiene su color, fijado la primera vez que se crea.
@@ -53,7 +53,8 @@ export function pintar(vista) {
     </div>
     <div class="acciones"><button class="accion nuevo" data-c="+">+ Nota</button></div>
     <div class="buscador">
-      <input id="buscarNota" type="search" placeholder="Buscar en títulos y texto"
+      <label for="buscarNota">Buscar notas</label>
+      <input id="buscarNota" type="search" placeholder="Título o texto de la nota"
         value="${escapar(busca)}" autocapitalize="off" autocorrect="off">
     </div>
     <div id="notasCuerpo"></div></div>`;
@@ -76,12 +77,24 @@ export function pintar(vista) {
 
   const cuerpo = vista.querySelector('#notasCuerpo');
   if (!lista.length) {
-    cuerpo.innerHTML = `<p class="vacio">
-      ${q ? 'Nada coincide con «' + escapar(busca) + '».'
-          : datos.notas.length ? 'No hay notas en esta categoría.'
-          : 'Todavía no has escrito ninguna nota.'}
-      ${q ? '' : '<button id="crear">Escribir una</button>'}</p>`;
-    cuerpo.querySelector('#crear')?.addEventListener('click', () => hojaNota(null));
+    cuerpo.innerHTML = q
+      ? vacio({
+          titulo: 'Ninguna nota coincide',
+          cuerpo: `Nada contiene «${busca}» en el título ni en el texto.`,
+          accion: 'Quitar la búsqueda'
+        })
+      : vacio({
+          titulo: datos.notas.length ? 'Esta categoría está vacía' : 'Aún no has escrito notas',
+          cuerpo: datos.notas.length
+            ? `No hay ninguna nota en «${catSel}». Escribe la primera o mira otra categoría.`
+            : 'Ideas, recetas, apuntes de trabajo: lo que escribas aquí se agrupa por '
+              + 'la categoría que tú le pongas.',
+          accion: 'Escribir una nota'
+        });
+    cuerpo.querySelector('[data-vacio]').onclick = () => {
+      if (!q) return hojaNota(null);
+      busca = ''; pintar(vista);
+    };
     return;
   }
 
@@ -161,7 +174,7 @@ export function hojaNota(n) {
     const pintarColor = () => {
       const actual = color || (existe() ? colorCat(catActual()) : null) || siguiente();
       $('#nCol').innerHTML = PALETA.map(c => `<button data-c="${c}" style="background:${c}"
-        aria-pressed="${c === actual}" aria-label="Color"></button>`).join('');
+        aria-pressed="${c === actual}" aria-label="Usar el color ${c}"></button>`).join('');
       $('#nColNota').textContent = existe()
         ? `El color es de toda la categoría «${catActual()}».`
         : `Categoría nueva: este color quedará asociado a «${catActual()}».`;

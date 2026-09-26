@@ -68,6 +68,8 @@ de sobra este uso.
 - Rachas, tira de progreso y resumen calculados sobre la periodicidad de cada hábito
 - Resumen por semana, mes o año, cada uno con sus propias métricas, gráfico de
   subperiodos y comparación con el periodo anterior
+- **Calendario del mes** con tres ámbitos: todos los hábitos diarios, una sección
+  concreta o un hábito suelto (incluidos los semanales y mensuales)
 - Archivar en vez de borrar, conservando el historial
 
 **Notas**
@@ -112,6 +114,43 @@ esperas a que responda el servidor.
 Sin Worker configurado, la app funciona igual pero los datos existen solo en ese dispositivo.
 
 ---
+
+## Reglas de diseño
+
+`css/estilo.css` empieza con un bloque de tokens y todo lo demás los usa. Si algo hay que
+cambiar, se cambia ahí y no en la regla concreta.
+
+| Grupo | Tokens |
+|---|---|
+| Superficies | `--paper` fondo · `--card` elevado · `--hueco` hundido |
+| Texto | `--ink` · `--muted` · `--line` para el borde de 1px |
+| Acento | `--acento` único, para acciones, enlaces y foco |
+| Espaciado | `--e1` 4px … `--e7` 32px, siempre múltiplos de 4 |
+| Tipografía | `--t-meta` 12 · `--t-aux` 14 · `--t-base` 16 · `--t-med` 20 · `--t-tit` 26 · `--t-cifra` 34 |
+| Radios | `--r1` 8 · `--r2` 12 · `--r3` 16 · `--r4` 22 · `--rp` píldora |
+| Movimiento | `--m1` 100ms · `--m2` 150 · `--m3` 200 · `--m4` 300 |
+
+Cinco reglas que no se rompen:
+
+1. **Nada por debajo de 12px**, ni siquiera en las etiquetas de los gráficos, y solo tres
+   pesos: 400, 500 y 600.
+2. **Toda superficie elevada lleva borde de 1px** además de fondo. La sombra es casi
+   inexistente; el borde es lo que separa. En modo oscuro se le suma un filo claro arriba
+   (`--brillo`), porque ahí un borde solo no se ve.
+3. **Un único color de acento.** Los colores de categoría y de grupo identifican datos,
+   nunca acciones.
+4. **44×44 como mínimo** en todo lo que se pulsa. Por eso la tira de la semana se desborda
+   12px de su tarjeta: es la única forma de que siete celdas lleguen a 44px en 375px.
+5. **Solo se animan `transform` y `opacity`**, con las duraciones de la tabla, y
+   `prefers-reduced-motion` lo apaga todo.
+
+Además: cada estado vacío dice qué falta, por qué está vacío y trae el botón que lo llena;
+los botones de icono llevan `aria-label` descriptivo y `data-tip` (la pista visible), nunca
+`title`; y no se usa `confirm()` del navegador, sino `confirmar()` de `nucleo.js`, que nombra
+lo que se va a borrar, arranca con el foco en Cancelar y se cierra con Escape.
+
+`abrirHoja()` encierra el foco dentro de la hoja mientras está abierta y lo devuelve al botón
+que la abrió al cerrarla.
 
 ## Estructura del proyecto
 
@@ -259,7 +298,7 @@ inicio, el ordenador). Cada uno guarda la configuración por separado.
 |---|---|
 | **Hoy** | Pantalla de inicio: gasto del día y del mes, y los hábitos listos para marcar |
 | **Finanzas** | Añadir movimiento, listado por meses y métricas |
-| **Hábitos** | Los grupos que definas, más un resumen con métricas |
+| **Hábitos** | Los grupos que definas, más un resumen con métricas y un calendario del mes |
 | **Notas** | Notas por categoría |
 | **Ajustes** | Nube, presupuesto, importación, copias y borrado |
 
@@ -355,7 +394,7 @@ La pestaña Hoy, por el mismo motivo, muestra solo los hábitos del día.
 | Ventana | Gráfico | Métricas propias |
 |---|---|---|
 | Semana | día a día, L–D | días redondos, cumplidos, lo que queda, sesiones extra |
-| Mes | semana a semana + mapa de calor | días redondos, hábitos al 100%, fallos dobles, recuperación |
+| Mes | semana a semana | días redondos, hábitos al 100%, fallos dobles, recuperación |
 | Año | mes a mes | cumplidos del año, días redondos, mejor mes, recuperación |
 
 Además, en las ventanas de mes y año hay un desglose **por día de la semana**, que señala tu
@@ -380,6 +419,34 @@ penalizan, y tampoco los anteriores a la creación del hábito.
 Cada ventana solo incluye los hábitos cuyo periodo cabe dentro: los mensuales no aparecen
 en el resumen semanal, porque su periodo es más largo que la ventana. Un aviso al pie indica
 cuántos quedan fuera y dónde verlos.
+
+### El calendario
+
+Dentro de Hábitos, junto a Resumen, hay un **Calendario** que enseña el mes completo. El
+selector de arriba decide qué se mide en cada casilla:
+
+| Ámbito | Qué pinta cada día |
+|---|---|
+| Todos los hábitos diarios | cuántos de los que tocaban ese día se cumplieron (`2/3`) |
+| Por sección | lo mismo, pero solo con los hábitos de ese grupo, y con su color |
+| Un hábito concreto | si se cumplió, y la cantidad registrada si la tiene |
+
+Las casillas tienen cuatro escalones —todo, la mitad o más, algo, nada— más un quinto para
+los días en los que no tocaba nada. Son escalones y no un degradado continuo a propósito:
+un degradado deja el número del día ilegible justo en la franja media, y peor en modo oscuro.
+
+Un hábito **semanal o mensual** no se cumple «un día»: en ese caso todos los días del mismo
+periodo comparten el estado, la semana entera se pinta igual, y el total cuenta periodos
+(«3 de 4») en vez de días. Al tocar cualquier día de esa semana se edita el periodo entero.
+
+Tocar un día abre lo que corresponde: la hoja de ese hábito si el ámbito es uno solo, o una
+hoja con **todo lo que tocaba ese día** —una casilla por hábito de sí/no, un número por los
+de cantidad o cronómetro— para marcarlo de una vez. La rejilla se dibuja siempre, incluso en
+un mes sin nada registrado; en ese caso el mensaje va dentro de la propia tarjeta del
+calendario, no en su lugar.
+
+El botón **Hoy** aparece en la barra del mes en cuanto te mueves de mes, para volver de un
+toque.
 
 Las sesiones registradas en días libres no cuentan como obligación pero se suman aparte
 como **sesiones fuera de plan**, así que un entrenamiento extra suma sin poder bajar el
@@ -450,6 +517,47 @@ Limitaciones del disparador, todas de Apple: solo salta con pagos sin contacto (
 ni tarjeta física); a veces salta también con pagos rechazados; a veces falla esperando los
 datos del pago; y necesita que Wallet tenga permiso para usar datos móviles
 (Ajustes → Apps → Wallet).
+
+### Tarjeta compartida: registro automático dividido entre dos
+
+Para una tarjeta compartida (por ejemplo, una Revolut con tu pareja), en el móvil de la otra
+persona el atajo no pregunta nada: manda el pago al Worker y este lo **divide entre dos**, le
+pone categoría y nota con el mismo sistema que el pop-up, y lo deja marcado **«por revisar»**.
+En tu app aparece en Hoy una tarjeta «N gastos compartidos por revisar»; dentro, cada uno se
+confirma con ✓, se corrige tocándolo (al guardar queda revisado) o se confirman todos a la vez.
+
+**Una clave aparte para el otro móvil.** El Worker acepta una segunda clave, `CLAVE_AUTO`, que
+solo sirve para esta ruta: con ella se pueden añadir gastos compartidos, pero no leer ni
+modificar nada más. Así tu clave principal no sale de tus dispositivos.
+
+```powershell
+# Genera la clave limitada y déjala en el portapapeles
+$b = New-Object byte[] 32
+(New-Object System.Security.Cryptography.RNGCryptoServiceProvider).GetBytes($b)
+[Convert]::ToBase64String($b) | Set-Clipboard
+# Súbela como secreto, sin pegar nada a mano
+Get-Clipboard | npx wrangler secret put CLAVE_AUTO
+```
+
+**El atajo en el otro móvil** (Automatización → Transacción → solo la tarjeta compartida →
+**Ejecutar inmediatamente** activado y **Notificar al ejecutar** desactivado):
+
+1. **Obtener contenido de URL**: `POST https://TU-WORKER.workers.dev/auto`, encabezado
+   `Authorization: Bearer CLAVE_AUTO`, cuerpo JSON con tres campos de tipo Texto:
+   `comercio` (*Entrada del atajo → Comerciante*), `importe` (*Entrada del atajo → Importe*) y
+   `quien` (su nombre, escrito a mano).
+
+Es la única acción. Si alguna vez el reparto no es a medias, se añade un campo `reparto`
+(Número) con el número de partes.
+
+Para que la tarjeta compartida funcione igual cuando pagas tú, crea en tu móvil la misma
+automatización para esa tarjeta, con tu nombre en `quien`, y **desmárcala** en la automatización
+del pop-up: así todos los gastos de esa tarjeta siguen el mismo camino, sin importar quién pague.
+
+Como el atajo corre sin que nadie mire, un fallo pasa desapercibido: un día de bloqueo de
+LaLiga, un pago con la tarjeta física o una compra online no quedan registrados. Y como el
+disparador salta a veces con pagos rechazados, conviene echar un ojo a la bandeja antes de
+confirmar todo.
 
 ### Atajo manual
 
@@ -525,6 +633,9 @@ se envía al servidor.
 { id, t, c: 12.4, cat: 'comida', n: 'Menú del día', tipo: 'gasto' | 'ingreso',
   com: 'MERCADONA S.A. 4521' }   // com: comercio original, si vino de un pago o un CSV
 ```
+Los gastos de la tarjeta compartida añaden `compartido` (entre cuántos se divide), `total`
+(el importe completo del pago), `quien` (quién pagó) y `revisar: true` hasta que los confirmas.
+`c` es siempre tu parte, así que métricas y presupuestos cuentan solo lo que te corresponde.
 
 **habitos**
 ```js
@@ -606,6 +717,9 @@ Todas las rutas exigen la cabecera `Authorization: Bearer <clave>`, salvo `/salu
 | `POST` | `/col/<nombre>` | Inserta o actualiza. Acepta un objeto o un array |
 | `POST` | `/col/<nombre>/borrados` | Marca ids como borrados. Acepta uno o un array |
 | `POST` | `/sugerir` | `{ comercio, importe }` → importe limpio, nota, categoría sugerida y lista ordenada. No guarda nada |
+| `POST` | `/auto` | `{ comercio, importe, quien?, reparto? }` → guarda un gasto compartido dividido y por revisar. Admite la clave limitada |
+
+Hay dos claves: `CLAVE`, la principal, sirve para todo; `CLAVE_AUTO`, opcional, solo para `/auto`.
 
 Las rutas antiguas `/gastos` y `/borrados` siguen funcionando como alias de
 `/col/gastos`, por compatibilidad con la primera versión de la app.

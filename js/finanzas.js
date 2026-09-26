@@ -4,7 +4,7 @@
 import {
   datos, anadir, actualizar, borrar, restaurar, ajuste, nube, enLote,
   eur, eur0, escapar, dia, inicioMes, finMes, nombreMes, navMes,
-  avisar, abrirHoja, cerrarHoja, emitir,
+  avisar, abrirHoja, cerrarHoja, confirmar, emitir, vacio,
 } from './nucleo.js';
 
 /* Las categorías son una colección más, así que se editan desde la app y viajan
@@ -44,11 +44,16 @@ export function asegurarNoDefinido() {
   if (!datos.categorias.some(c => c.id === NO_DEFINIDO.id))
     anadir('categorias', { ...NO_DEFINIDO, _semilla: true });
 }
+/** Gastos que entraron solos (tarjeta compartida) y esperan tu visto bueno. */
+export const porRevisar = () => datos.gastos.filter(g => g.revisar);
+export function verPorRevisar() {
+  sub = 'lista'; revisando = true; filtro = null; busca = ''; impMin = ''; impMax = '';
+}
 export const sinCategoria = () =>
   datos.gastos.filter(g => g.cat === NO_DEFINIDO.id && g.tipo !== 'ingreso');
 /** Abre Movimientos buscando lo que está en «No definido», en todo el histórico. */
 export function verSinCategoria() {
-  sub = 'lista'; filtro = null; impMin = ''; impMax = '';
+  sub = 'lista'; filtro = null; impMin = ''; impMax = ''; revisando = false;
   busca = cat(NO_DEFINIDO.id).nom;
 }
 
@@ -151,12 +156,18 @@ export function hojaFijos() {
             <small>día ${f.diaMes || 1} de cada mes${f.activo === false ? ' · pausado' : ''}</small></span>
           <b class="num">${eur(f.c)}</b>
         </div>`;
-      }).join('') : '<p class="vacio" style="padding:24px">Ninguno todavía.</p>';
+      }).join('') : vacio({
+        titulo: 'Sin gastos fijos',
+        cuerpo: 'Alquiler, cuotas, suscripciones: apúntalos una vez y se descuentan '
+              + 'del presupuesto todos los meses.',
+        accion: 'Añadir el primero'
+      });
     };
     pinta();
     caja.querySelector('#fjCerrar').onclick = cerrarHoja;
     caja.querySelector('#fjNuevo').onclick = () => hojaFijo(null);
     caja.querySelector('#listaFijos').onclick = e => {
+      if (e.target.closest('[data-vacio]')) return hojaFijo(null);
       const fila = e.target.closest('[data-id]');
       if (fila) hojaFijo(datos.fijos.find(f => f.id === fila.dataset.id));
     };
@@ -234,6 +245,7 @@ export function notasFrecuentes(prefijo = '') {
 /* ---------- Estado del módulo ---------- */
 let sub = 'anadir', off = 0, filtro = null, busca = '', vistaMet = 'mes', anioOff = 0;
 let impMin = '', impMax = '';
+let revisando = false;   // bandeja de gastos compartidos por revisar
 let buffer = '', catSel = null, tipoSel = 'gasto', nota = '', fechaSel = null, editando = null;
 /** Nunca devuelve una categoría archivada o inexistente: si la seleccionada
     desaparece, cae en la primera disponible. */
@@ -258,7 +270,7 @@ export function pintar(vista) {
     </div>`;
   vista.querySelector('.segmentos').onclick = e => {
     const b = e.target.closest('[data-sub]'); if (!b) return;
-    sub = b.dataset.sub; pintar(vista);
+    sub = b.dataset.sub; revisando = false; pintar(vista);
   };
   const cuerpo = vista.querySelector('#finCuerpo');
   if (sub === 'anadir')   pintarAnadir(cuerpo);
@@ -280,8 +292,13 @@ function pintarAnadir(c) {
   const t = gastado(0), presu = presupuesto();
   const sel = catActiva();
   if (!sel) {
-    c.innerHTML = `<p class="vacio">No hay ninguna categoría activa.<br>
-      Crea una en Ajustes para poder registrar gastos.</p>`;
+    c.innerHTML = vacio({
+      titulo: 'No hay ninguna categoría activa',
+      cuerpo: 'Cada movimiento necesita una categoría. Las has archivado todas, '
+            + 'así que crea o reactiva alguna para poder registrar gastos.',
+      accion: 'Gestionar categorías'
+    });
+    c.querySelector('[data-vacio]').onclick = () => hojaCategorias();
     return;
   }
   const fechaTxt = fechaSel
@@ -379,7 +396,7 @@ function pintarAnadir(c) {
     const imp = valor(); if (imp <= 0) return;
     const campos = { c: imp, cat: catActiva(), n: nota.trim(), tipo: tipoSel };
     if (editando) {
-      actualizar('gastos', editando, { ...campos, t: fechaSel || Date.now() });
+      actualizar('gastos', editando, { ...campos, t: fechaSel || Date.now(), revisar: false });
       avisar('Movimiento actualizado');
     } else {
       anadir('gastos', { ...campos, t: fechaSel || Date.now() });
@@ -428,7 +445,7 @@ function pintarLista(c) {
 
   /* Con cualquier filtro activo se ignora el mes: lo que quieres es
      encontrarlo, esté donde esté. */
-  let gs = buscando ? datos.gastos : delMes(off);
+  let gs = revisando ? porRevisar() : buscando ? datos.gastos : delMes(off);
   if (q) gs = gs.filter(g => (g.n || '').toLowerCase().includes(q) ||
       cat(g.cat).nom.toLowerCase().includes(q) || g.c.toFixed(2).replace('.', ',').includes(q));
   if (isFinite(min)) gs = gs.filter(g => g.c >= min);
@@ -436,18 +453,50 @@ function pintarLista(c) {
   const presentes = catsTodas().filter(x => gs.some(g => g.cat === x.id && !esIngreso(g)));
   if (filtro && !presentes.some(x => x.id === filtro)) filtro = null;
 
-  c.innerHTML = `
+  if (revisando) {
+    const total = gs.reduce((t, g) => t + g.c, 0);
+    c.innerHTML = `
+      <div class="bandeja">
+        <div><b>Por revisar</b>
+          <small>${gs.length} gasto${gs.length === 1 ? '' : 's'} de la tarjeta compartida ·
+            tu parte ${eur(total)}</small></div>
+        <button id="salirRev" aria-label="Salir de la revisión" data-tip="Salir">✕</button>
+      </div>
+      <p class="pieNota" style="padding:6px 4px 0">Toca uno para corregirlo; al guardarlo queda
+        revisado. Con ✓ lo das por bueno tal cual.</p>
+      ${gs.length > 1 ? '<button class="principal" id="okTodos">Confirmar todos</button>' : ''}
+      <div id="cuerpo"></div>`;
+    c.querySelector('#salirRev').onclick = () => { revisando = false; pintarLista(c) };
+    c.querySelector('#okTodos')?.addEventListener('click', () => {
+      const ids = gs.map(g => g.id);
+      enLote(() => ids.forEach(id => actualizar('gastos', id, { revisar: false })));
+      revisando = false;
+      avisar(`${ids.length} gastos confirmados`);
+      emitir();
+    });
+    if (!gs.length) {
+      c.querySelector('#cuerpo').innerHTML = vacio({
+        titulo: 'Nada pendiente de revisar',
+        cuerpo: 'Aquí caen los gastos que entran solos desde la tarjeta compartida. '
+              + 'Ahora mismo no queda ninguno por confirmar.'
+      });
+      return;
+    }
+  } else c.innerHTML = `
     <div class="buscador">
-      <input id="buscar" type="search" placeholder="Buscar concepto, categoría o importe"
+      <label for="buscar">Buscar movimientos</label>
+      <input id="buscar" type="search" placeholder="Concepto, categoría o importe"
         value="${escapar(busca)}" autocapitalize="off" autocorrect="off">
     </div>
     <div class="rango">
-      <input id="impMin" type="number" inputmode="decimal" min="0" step="any"
-        placeholder="Desde €" value="${escapar(impMin)}">
-      <span>–</span>
-      <input id="impMax" type="number" inputmode="decimal" min="0" step="any"
-        placeholder="Hasta €" value="${escapar(impMax)}">
-      ${buscando ? '<button id="limpiar" aria-label="Quitar filtros">✕</button>' : ''}
+      <label for="impMin">Desde
+        <input id="impMin" type="number" inputmode="decimal" min="0" step="any"
+          placeholder="0 €" value="${escapar(impMin)}"></label>
+      <label for="impMax">Hasta
+        <input id="impMax" type="number" inputmode="decimal" min="0" step="any"
+          placeholder="Sin límite" value="${escapar(impMax)}"></label>
+      ${buscando ? `<button id="limpiar" aria-label="Quitar los filtros de búsqueda"
+        data-tip="Quitar filtros">✕</button>` : ''}
     </div>
     <div class="navmes ${buscando ? 'oculto' : ''}" id="nav"></div>
     <div class="filtros" id="filtros"></div>
@@ -466,13 +515,16 @@ function pintarLista(c) {
       try { nuevo.setSelectionRange(pos, pos) } catch { /* los number no lo admiten */ }
     };
   };
-  vivo('#buscar', v => busca = v);
-  vivo('#impMin', v => impMin = v);
-  vivo('#impMax', v => impMax = v);
+  if (!revisando) {
+    vivo('#buscar', v => busca = v);
+    vivo('#impMin', v => impMin = v);
+    vivo('#impMax', v => impMax = v);
+  }
   c.querySelector('#limpiar')?.addEventListener('click', () => {
     busca = ''; impMin = ''; impMax = ''; pintarLista(c);
   });
 
+  if (!revisando) {
   if (!buscando) navMes(c.querySelector('#nav'), off,
     n => { off = n; pintarLista(c) },
     datos.gastos.length ? Math.min(...datos.gastos.map(g => g.t)) : Date.now());
@@ -487,19 +539,33 @@ function pintarLista(c) {
     const b = e.target.closest('.chip'); if (!b) return;
     filtro = b.dataset.f || null; pintarLista(c);
   };
+  }
 
   const vis = filtro ? gs.filter(g => g.cat === filtro) : gs;
   const cuerpo = c.querySelector('#cuerpo');
   if (!vis.length) {
-    cuerpo.innerHTML = `<p class="vacio">${buscando
-      ? 'Ningún movimiento cumple esos filtros.'
-      : 'Sin movimientos en ' + nombreMes(off).toLowerCase() + '.'}</p>`;
+    cuerpo.innerHTML = buscando
+      ? vacio({
+          titulo: 'Ningún movimiento cumple esos filtros',
+          cuerpo: 'Prueba con otro texto o ensancha el rango de importe.',
+          accion: 'Quitar los filtros'
+        })
+      : vacio({
+          titulo: `Sin movimientos en ${nombreMes(off).toLowerCase()}`,
+          cuerpo: 'Cuando registres un gasto o un ingreso de este mes aparecerá aquí, '
+                + 'agrupado por día.',
+          accion: 'Añadir un movimiento'
+        });
+    cuerpo.querySelector('[data-vacio]').onclick = () => {
+      if (buscando) { busca = ''; impMin = ''; impMax = ''; filtro = null; pintarLista(c); return }
+      sub = 'anadir'; pintar(document.getElementById('v-finanzas'));
+    };
     return;
   }
 
   /* Con filtros activos, el recuento y el total de lo encontrado es lo primero
      que quieres saber: «¿cuánto llevo gastado en cafés este año?». */
-  const resumen = buscando ? (() => {
+  const resumen = buscando && !revisando ? (() => {
     const sale = vis.filter(g => !esIngreso(g)).reduce((s,g) => s + g.c, 0);
     const entra = vis.filter(esIngreso).reduce((s,g) => s + g.c, 0);
     const media = sale / Math.max(1, vis.filter(g => !esIngreso(g)).length);
@@ -524,14 +590,18 @@ function pintarLista(c) {
         return `<li data-id="${g.id}">
           <div class="punto" style="background:${ing ? colorVar('ingreso') : color(x.id)}22">
             ${ing ? '↑' : x.emo}</div>
-          <div class="txt"><b>${g.n ? escapar(g.n) : (ing ? 'Ingreso' : x.nom)}${
-            g.fijo ? ' <span class="fijo">fijo</span>' : ''}</b>
-            <small>${g.n ? (ing ? 'Ingreso' : x.nom) + ' · ' : ''}${new Date(g.t)
+          <div class="txt"><b>${g.n ? escapar(g.n) : (ing ? 'Ingreso' : x.nom)}</b>
+            <small>${g.fijo ? '<span class="fijo">fijo</span>' : ''}${
+              g.revisar ? '<span class="fijo rev">revisar</span>' : ''}${
+              g.compartido ? `½ de ${eur(g.total || g.c * g.compartido)}${
+              g.quien ? ' · ' + escapar(g.quien) : ''} · ` : ''}${
+              g.n ? (ing ? 'Ingreso' : x.nom) + ' · ' : ''}${new Date(g.t)
               .toLocaleDateString('es-ES',{day:'numeric',month:'short'})} · ${new Date(g.t)
               .toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</small></div>
           ${g.pend && nube ? '<div class="subir"></div>' : ''}
           <div class="imp num ${ing ? 'ingreso' : ''}">${ing ? '+' : ''}${eur(g.c)}</div>
-          <button class="borrar" data-borrar="${g.id}" aria-label="Borrar">✕</button>
+          ${revisando ? `<button class="confirmar" data-ok="${g.id}" aria-label="Confirmar este gasto" data-tip="Confirmar">✓</button>` : ''}
+          <button class="borrar" data-borrar="${g.id}" aria-label="Borrar este movimiento" data-tip="Borrar">✕</button>
         </li>`;
       }).join('')}</ul>`;
   }).join('');
@@ -556,6 +626,13 @@ function pintarLista(c) {
 
   cuerpo.onclick = e => {
     if (largo) { largo = false; return }   // la pulsación larga ya actuó
+    const okBtn = e.target.closest('[data-ok]');
+    if (okBtn) {
+      actualizar('gastos', okBtn.dataset.ok, { revisar: false });
+      if (!porRevisar().length) revisando = false;
+      emitir();
+      return;
+    }
     const del = e.target.closest('[data-borrar]');
     if (del) {
       const it = borrar('gastos', del.dataset.borrar);
@@ -606,7 +683,11 @@ function pintarMes(c) {
   const gs = delMes(off);
   const cuerpo = c.querySelector('#cuerpo');
   if (!gs.length) {
-    cuerpo.innerHTML = `<p class="vacio">Sin datos en ${nombreMes(off).toLowerCase()}.</p>`;
+    cuerpo.innerHTML = vacio({
+      titulo: `Sin datos en ${nombreMes(off).toLowerCase()}`,
+      cuerpo: 'Las métricas del mes necesitan al menos un movimiento. '
+            + 'Cambia de mes con las flechas de arriba o registra uno.'
+    });
     return;
   }
 
@@ -654,8 +735,10 @@ function pintarMes(c) {
         : (delta >= 0 ? '▲ ' : '▼ ') + Math.abs(delta).toFixed(0) + '% respecto a ' +
           nombreMes(off-1).split(' ')[0].toLowerCase()}</div>
       ${mediaPrev ? `<div class="delta">${total > mediaPrev ? '▲ ' : '▼ '}${
-        Math.abs(Math.round(((total - mediaPrev)/mediaPrev)*100))}% respecto a tu media de los
-        últimos ${trimestre.length} meses <span class="num">(${eur0(mediaPrev)})</span></div>` : ''}
+        Math.abs(Math.round(((total - mediaPrev)/mediaPrev)*100))}% respecto a ${
+          trimestre.length === 1 ? 'el mes anterior'
+          : `tu media de los últimos ${trimestre.length} meses`
+        } <span class="num">(${eur0(mediaPrev)})</span></div>` : ''}
       ${presu ? `<div class="barra" style="margin-top:14px"><i class="${total>presu?'pasado':''}"
           style="width:${Math.min(total/presu,1)*100}%"></i></div>
         <div class="delta">${total <= presu
@@ -691,7 +774,7 @@ function pintarMes(c) {
       Lo variable, que es donde puedes actuar, son ${eur0(total - fijoMes)}.</p>` : ''}`}
 
     <div class="panel">
-      <div style="font-size:15px;color:var(--muted)">En qué se te va${
+      <div class="rotulo">En qué se te va${
         pasadas ? ` · <span class="rojo">${pasadas} categoría${pasadas===1?'':'s'} pasada${
           pasadas===1?'':'s'}</span>` : ''}</div>
       <div class="pieNota" style="padding:2px 0 0">Las categorías sin límite propio se miden
@@ -713,7 +796,7 @@ function pintarMes(c) {
     </div>
 
     <div class="panel">
-      <div style="font-size:15px;color:var(--muted)">Últimos seis meses</div>
+      <div class="rotulo">Últimos seis meses</div>
       ${grafMeses()}
     </div>`;
 }
@@ -731,16 +814,22 @@ function pintarAnio(c) {
   const nav = c.querySelector('#navA');
   nav.innerHTML = `
     <button data-d="-1" ${new Date(anio,0,1).getTime() > primero ? '' : 'disabled'}
-      aria-label="Anterior">‹</button>
+      aria-label="Ver el año anterior" data-tip="Año anterior">‹</button>
     <b>${anio}</b>
-    <button data-d="1" ${anioOff < 0 ? '' : 'disabled'} aria-label="Siguiente">›</button>`;
+    <button data-d="1" ${anioOff < 0 ? '' : 'disabled'} aria-label="Ver el año siguiente" data-tip="Año siguiente">›</button>`;
   nav.onclick = e => {
     const b = e.target.closest('button[data-d]');
     if (b && !b.disabled) { anioOff += parseInt(b.dataset.d); pintarAnio(c) }
   };
 
   const cuerpo = c.querySelector('#cuerpoA');
-  if (!gs.length) { cuerpo.innerHTML = `<p class="vacio">Sin movimientos en ${anio}.</p>`; return }
+  if (!gs.length) {
+    cuerpo.innerHTML = vacio({
+      titulo: `Sin movimientos en ${anio}`,
+      cuerpo: 'No hay nada registrado en este año. Prueba con otro año desde las flechas.'
+    });
+    return;
+  }
 
   const total = gastadoAnio(anioOff), entra = ingresadoAnio(anioOff);
   const prev  = gastadoAnio(anioOff - 1);
@@ -817,12 +906,12 @@ function pintarAnio(c) {
     </div>` : ''}
 
     <div class="panel">
-      <div style="font-size:15px;color:var(--muted)">Gasto mes a mes</div>
+      <div class="rotulo">Gasto mes a mes</div>
       ${grafAnio(porMes, enCurso ? new Date().getMonth() : 11)}
     </div>
 
     <div class="panel">
-      <div style="font-size:15px;color:var(--muted)">En qué se te fue el año</div>
+      <div class="rotulo">En qué se te fue el año</div>
       ${porCat.map(x => `<div class="filaCat">
         <span>${x.emo} ${x.nom}</span><span class="num">${eur(x.s)}</span>
         <div class="barra"><i style="width:${(x.s/total)*100}%;background:${color(x.id)}"></i></div>
@@ -843,7 +932,7 @@ function grafAnio(serie, ultimo) {
     }).join('')}
   </svg>
   <div style="display:flex;margin-top:8px">
-    ${serie.map((s,i) => `<div style="flex:1;text-align:center;font-size:10px;line-height:1.4;
+    ${serie.map((s,i) => `<div style="flex:1;text-align:center;font-size:var(--t-meta);line-height:1.4;
       color:var(--muted)${i === ultimo ? ';color:var(--ink);font-weight:600' : ''}">
       ${s.etq}<br><span class="num">${s.v ? Math.round(s.v/1000 >= 1 ? s.v/1000 : s.v)
         + (s.v >= 1000 ? 'k' : '') : '—'}</span></div>`).join('')}
@@ -866,7 +955,7 @@ function grafMeses() {
         height="${Math.max(h,1.2)}" fill="${s.activo ? 'var(--ink)' : 'var(--hueco)'}"/>`;
     }).join('')}</svg>
   <div style="display:flex;margin-top:8px">
-    ${serie.map(s => `<div style="flex:1;text-align:center;font-size:11px;line-height:1.5;
+    ${serie.map(s => `<div style="flex:1;text-align:center;font-size:var(--t-meta);line-height:1.5;
       color:var(--muted)${s.activo ? ';color:var(--ink);font-weight:500' : ''}">
       ${s.etq}<br><span class="num">${s.v ? eur0(s.v) : '—'}</span></div>`).join('')}
   </div>`;
@@ -1043,7 +1132,7 @@ export function hojaCategorias() {
           <span class="txt"><b>${escapar(c.nom)}</b>
             <small>${usos(c.id)} movimiento${usos(c.id) === 1 ? '' : 's'}${
               c.archivada ? ' · archivada' : ''}</small></span>
-          <button data-sube="${c.id}" aria-label="Subir">↑</button>
+          <button data-sube="${c.id}" aria-label="Subir ${escapar(c.nom)} en el orden" data-tip="Subir">↑</button>
         </div>`).join('');
     };
     pinta();
@@ -1081,7 +1170,7 @@ function hojaCategoria(c) {
     <label><span>Emoji</span><input id="cEmo" maxlength="2" value="${escapar(d.emo)}"></label>
     <label><span>Color</span></label>
     <div class="colores" id="cCol">${PALETA_CAT.map(x => `<button data-c="${x}"
-      style="background:${x}" aria-pressed="${d.color === x}" aria-label="Color"></button>`).join('')}</div>
+      style="background:${x}" aria-pressed="${d.color === x}" aria-label="Usar el color ${x}"></button>`).join('')}</div>
     ${nueva ? '' : `<p class="pieNota">Identificador: <b>${d.id}</b>. Es lo que debe enviar el
       atajo de iOS, y no cambia aunque renombres la categoría.</p>`}
     <div class="fila">
