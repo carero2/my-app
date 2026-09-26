@@ -380,59 +380,150 @@ export function porDiaSemana(iniMs, finMs) {
 }
 
 /** Rejilla del mes para el mapa de calor: un valor por día. */
-/* ---------- Calendario del mes, con ámbito ----------
+/* ---------- Calendario ----------
    ambito: {tipo:'todos'}                 · todos los diarios con objetivo
            {tipo:'grupo',  valor:'Sueño'} · los diarios con objetivo de ese grupo
-           {tipo:'habito', valor:'<id>'}  · un hábito suelto, sea cual sea su frecuencia
-   Un hábito semanal o mensual no se cumple «un día»: en ese caso todos los días
-   de su periodo comparten el estado del periodo, y al tocar cualquiera se edita
-   el periodo entero. */
+           {tipo:'habito', valor:'<id>'}  · un hábito suelto
+
+   La rejilla usa la unidad del hábito, no siempre el día: una cuadrícula de
+   treinta días no dice nada de un hábito semanal, porque treinta casillas
+   repiten cuatro datos. Por eso un semanal se dibuja por semanas y un mensual
+   por meses.
+
+   Estados de una casilla:
+     cumplido · parcial · fallado (tocaba y no se hizo) · extra (no tocaba pero
+     se hizo) · libre (no tocaba y no se hizo) · futuro
+*/
+
+function estadoDe(h, p, tocaba, futuro, enCurso = false) {
+  if (futuro) return { estado: 'futuro', v: 0, pct: null };
+  if (p < periodo(frecDe(h), h.t || 0)) return { estado: 'libre', v: 0, pct: null };
+  const v = valorDe(h, p);
+  /* Una sesión en un día libre cuenta: es lo que de verdad hiciste, aunque no
+     tocara. Suma como extra y nunca resta. */
+  if (!tocaba) return v > 0
+    ? { estado: 'extra', v, pct: 100 }
+    : { estado: 'libre', v: 0, pct: null };
+  if (!esObjetivo(h)) return v > 0
+    ? { estado: 'cumplido', v, pct: 100 }
+    : { estado: 'libre', v: 0, pct: null };
+  if (cumplido(h, p)) return { estado: 'cumplido', v, pct: 100 };
+  const parcial = { estado: 'parcial', v,
+    pct: h.objetivo ? Math.min(99, Math.round((v / h.objetivo) * 100)) : 50 };
+  /* El periodo en curso todavía no se ha fallado: aún puedes cumplirlo. No se
+     pinta en rojo ni cuenta como debido hasta que termina. */
+  if (enCurso) return v > 0 ? { ...parcial, curso: true } : { estado: 'curso', v: 0, pct: 0 };
+  if (v > 0) return parcial;
+  return { estado: 'fallado', v: 0, pct: 0 };
+}
+
+const cuenta = celdas => {
+  const deb = celdas.reduce((s, x) => s + (x.deb ?? 0), 0);
+  const hec = celdas.reduce((s, x) => s + (x.hec ?? (x.estado === 'cumplido' ? 1 : 0)), 0);
+  const extras = celdas.reduce((s, x) => s + (x.extras ?? (x.estado === 'extra' ? 1 : 0)), 0);
+  return { deb, hec, extras };
+};
+
 export function calendarioMes(off = 0, ambito = { tipo: 'todos' }) {
+  const uno = ambito.tipo === 'habito'
+    ? activos().find(h => h.id === ambito.valor) || archivados().find(h => h.id === ambito.valor)
+    : null;
+  const frec = uno ? frecDe(uno) : 'dia';
+  const lote = uno ? [uno] : activos().filter(h =>
+    frecDe(h) === 'dia' && esObjetivo(h) &&
+    (ambito.tipo !== 'grupo' || (h.grupo || 'General') === ambito.valor));
+  const primerDato = lote.length ? Math.min(...lote.map(h => h.t || Date.now())) : Date.now();
+  const comun = { uno, frec, lote, primerDato };
+
+  if (uno && frec === 'mes')    return { ...comun, ...porMeses(uno, off) };
+  if (uno && frec === 'semana') return { ...comun, ...porSemanas(uno, off) };
+  return { ...comun, ...porDias(uno, lote, off) };
+}
+
+/* --- Rejilla de días: un mes, siete columnas --- */
+function porDias(uno, lote, off) {
   const base = new Date();
   const primero = new Date(base.getFullYear(), base.getMonth() + off, 1);
   const ultimo  = new Date(base.getFullYear(), base.getMonth() + off + 1, 0).getDate();
   const hoy = dia();
-  const uno = ambito.tipo === 'habito'
-    ? activos().find(h => h.id === ambito.valor) || archivados().find(h => h.id === ambito.valor)
-    : null;
-  const lote = uno ? [uno] : activos().filter(h =>
-    frecDe(h) === 'dia' && esObjetivo(h) &&
-    (ambito.tipo !== 'grupo' || (h.grupo || 'General') === ambito.valor));
-
-  const frec = uno ? frecDe(uno) : 'dia';
   const celdas = [];
+
   for (let i = 1; i <= ultimo; i++) {
     const ms = new Date(primero.getFullYear(), primero.getMonth(), i, 12).getTime();
     const d  = dia(ms);
-    if (d > hoy) { celdas.push({ d, ms, num: i, p: null, pct: null, futuro: true }); continue }
-    const p = uno ? periodo(frec, ms) : d;
+    const futuro = d > hoy;
     if (uno) {
-      const nacido = p >= periodo(frec, uno.t || 0);
-      const aplica = nacido && (frec !== 'dia' || toca(uno, d));
-      const v = aplica ? valorDe(uno, p) : 0;
-      const ok = aplica && cumplido(uno, p);
-      celdas.push({
-        d, ms, num: i, p, futuro: false, aplica, v, hecho: ok,
-        deb: aplica && esObjetivo(uno) ? 1 : 0, hec: ok ? 1 : 0,
-        pct: !aplica ? null
-           : !esObjetivo(uno) ? (v > 0 ? 100 : 0)
-           : ok ? 100
-           : uno.objetivo ? Math.min(99, Math.round((v / uno.objetivo) * 100)) : 0,
-      });
+      const e = estadoDe(uno, d, toca(uno, d), futuro, d === hoy);
+      celdas.push({ p: d, num: i, futuro, ...e,
+        deb: ['libre','extra','curso','futuro'].includes(e.estado) || e.curso ? 0 : 1,
+        hec: e.estado === 'cumplido' ? 1 : 0 });
       continue;
     }
-    let deb = 0, hec = 0;
+    if (futuro) { celdas.push({ p: d, num: i, futuro: true, estado: 'futuro',
+      deb: 0, hec: 0, extras: 0, pct: null }); continue }
+    let deb = 0, hec = 0, extras = 0, parciales = 0, abiertos = 0;
     for (const h of lote) {
-      if (!toca(h, d) || d < periodo('dia', h.t || 0)) continue;
-      deb++; if (cumplido(h, d)) hec++;
+      const e = estadoDe(h, d, toca(h, d), false, d === hoy);
+      if (e.estado === 'extra') { extras++; continue }
+      if (e.estado === 'libre') continue;
+      if (e.estado === 'curso') { abiertos++; continue }
+      if (e.curso) { abiertos++; parciales++; continue }
+      deb++;
+      if (e.estado === 'cumplido') hec++;
+      else if (e.estado === 'parcial') parciales++;
     }
-    celdas.push({ d, ms, num: i, p: d, deb, hec, aplica: deb > 0,
-      pct: deb ? Math.round((hec / deb) * 100) : null, futuro: false });
+    const estado = !deb ? (abiertos && parciales ? 'parcial'
+        : abiertos ? 'curso' : extras ? 'extra' : 'libre')
+      : hec === deb ? 'cumplido'
+      : hec || parciales ? 'parcial' : 'fallado';
+    celdas.push({ p: d, num: i, futuro: false, estado, deb, hec, extras, abiertos, v: 0,
+      pct: deb ? Math.round((hec / deb) * 100) : null });
   }
-  return {
-    celdas, hueco: (desdeDia(celdas[0].d).getDay() + 6) % 7,
-    uno, frec, lote,
-    primerDato: lote.length ? Math.min(...lote.map(h => h.t || Date.now())) : Date.now(),
-  };
+  return { modo: 'dias', paso: 'mes', celdas,
+    hueco: (desdeDia(celdas[0].p).getDay() + 6) % 7, ...cuenta(celdas) };
 }
+
+/* --- Filas de semanas: las que tocan el mes que se está viendo --- */
+function porSemanas(h, off) {
+  const base = new Date();
+  const primero = new Date(base.getFullYear(), base.getMonth() + off, 1);
+  const ultimo  = new Date(base.getFullYear(), base.getMonth() + off + 1, 0);
+  const ahora = periodo('semana', Date.now());
+  const corto = d => d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+    .replace('.', '');
+
+  const cur = new Date(primero);
+  cur.setDate(cur.getDate() - ((cur.getDay() || 7) - 1));   // atrás hasta el lunes
+  const celdas = [];
+  while (cur <= ultimo) {
+    const p = periodo('semana', cur.getTime());
+    const fin = new Date(cur); fin.setDate(fin.getDate() + 6);
+    const e = estadoDe(h, p, true, p > ahora, p === ahora);
+    celdas.push({ p, num: celdas.length + 1, futuro: p > ahora, ...e,
+      etq: `${corto(cur)} – ${corto(fin)}`,
+      nota: p === ahora ? 'Esta semana' : '',
+      deb: ['libre','curso','futuro'].includes(e.estado) || e.curso ? 0 : 1,
+      hec: e.estado === 'cumplido' ? 1 : 0 });
+    cur.setDate(cur.getDate() + 7);
+  }
+  return { modo: 'semanas', paso: 'mes', celdas, hueco: 0, ...cuenta(celdas) };
+}
+
+/* --- Rejilla de meses: un año --- */
+function porMeses(h, off) {
+  const anio = new Date().getFullYear() + off;
+  const ahora = periodo('mes', Date.now());
+  const celdas = [];
+  for (let m = 0; m < 12; m++) {
+    const p = periodo('mes', new Date(anio, m, 15).getTime());
+    const e = estadoDe(h, p, true, p > ahora, p === ahora);
+    celdas.push({ p, num: m + 1, futuro: p > ahora, ...e,
+      etq: new Date(anio, m, 1).toLocaleDateString('es-ES', { month: 'short' }).replace('.', ''),
+      nota: p === ahora ? 'Este mes' : '',
+      deb: ['libre','curso','futuro'].includes(e.estado) || e.curso ? 0 : 1,
+      hec: e.estado === 'cumplido' ? 1 : 0 });
+  }
+  return { modo: 'meses', paso: 'anio', anio, celdas, hueco: 0, ...cuenta(celdas) };
+}
+
 

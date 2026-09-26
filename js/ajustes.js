@@ -7,10 +7,11 @@ import {
   configurarNube, probarNube, marcarTodoPendiente, sincronizar, diagnostico,
   borrar, guardar, enLote, emitir, avisar, eur0, dia,
   abrirHoja, cerrarHoja, confirmar,
+  TEMAS, temaActual, fijarTema,
 } from './nucleo.js';
 import * as fin from './finanzas.js';
 
-const VERSION = 'v19';
+const VERSION = 'v20';
 
 export function pintar(vista) {
   const n = pendientes();
@@ -32,6 +33,8 @@ export function pintar(vista) {
     </div>
 
     <div class="grupo indice">
+      <button data-h="tema"><span>Apariencia</span>
+        <small>${TEMAS[temaActual()].toLowerCase()} ›</small></button>
       <button data-h="datos"><span>Datos y copias</span>
         <small>${items} items ›</small></button>
       <button data-h="acerca"><span>Acerca de</span>
@@ -45,7 +48,7 @@ export function pintar(vista) {
   vista.querySelector('.scroll').addEventListener('click', e => {
     const b = e.target.closest('[data-h]'); if (!b) return;
     ({ nube: hojaNube, presu: hojaPresupuesto, cats: fin.hojaCategorias,
-       fijos: fin.hojaFijos, datos: hojaDatos, acerca: hojaAcerca })[b.dataset.h](vista);
+       fijos: fin.hojaFijos, tema: hojaTema, datos: hojaDatos, acerca: hojaAcerca })[b.dataset.h](vista);
   });
   vista.querySelector('#ficheroJSON').onchange = e => importarCopia(e, vista);
 }
@@ -144,6 +147,30 @@ function hojaNube(vista) {
       configurarNube(null); cerrarHoja(); pintar(vista); avisar('Desconectado');
     });
   });
+}
+
+/* ---------- Apariencia ---------- */
+function hojaTema(vista) {
+  const pinta = () => abrirHoja(`
+    <h3>Apariencia</h3>
+    <p>Con «el del sistema» la app sigue el modo claro u oscuro del teléfono,
+       incluido el cambio automático al anochecer.</p>
+    <div class="opciones" id="temaSel" style="margin-top:20px">
+      ${Object.entries(TEMAS).map(([id, nom]) =>
+        `<button data-t="${id}" aria-pressed="${temaActual() === id}">${nom}</button>`).join('')}
+    </div>
+    <div class="fila"><button id="tmCerrar">Cerrar</button></div>`,
+  caja => {
+    caja.querySelector('#temaSel').onclick = e => {
+      const b = e.target.closest('[data-t]'); if (!b) return;
+      fijarTema(b.dataset.t);
+      caja.querySelectorAll('#temaSel button').forEach(x =>
+        x.setAttribute('aria-pressed', x.dataset.t === temaActual()));
+      pintar(vista);               // el índice enseña el tema elegido
+    };
+    caja.querySelector('#tmCerrar').onclick = cerrarHoja;
+  });
+  pinta();
 }
 
 /* ---------- Presupuesto ---------- */

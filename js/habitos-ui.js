@@ -446,25 +446,85 @@ function ambitoDe() {
 
 function pintarCalendario(c) {
   const amb = ambitoDe();
-  const { celdas, hueco, uno, frec, lote, primerDato } = calendarioMes(calOff, amb);
+  const cal = calendarioMes(calOff, amb);
+  const { modo, paso, celdas, hueco, uno, frec, lote, primerDato, deb, hec, extras } = cal;
   const col = uno ? colorDe(uno) : amb.tipo === 'grupo' ? colorGrupo(amb.valor) : '#3E6FA8';
-  const L = ['L','M','X','J','V','S','D'];
-
-  /* Un hábito semanal o mensual se cumple una vez por periodo, no una por día:
-     los días de un mismo periodo cuentan como uno solo en el total. */
-  const conDeb = celdas.filter(x => !x.futuro && x.deb);
-  const unicos = uno && frec !== 'dia'
-    ? [...new Map(conDeb.map(x => [x.p, x])).values()] : conDeb;
-  const hechos  = unicos.reduce((s,x) => s + x.hec, 0);
-  const debidos = unicos.reduce((s,x) => s + x.deb, 0);
   const grupoSel = amb.tipo === 'grupo';
+  const rango = modo === 'meses' ? String(cal.anio) : nombreMes(calOff);
 
-  /* Un hábito de cantidad enseña su número en la casilla; el resto, el reparto. */
-  const enCasilla = x => {
-    if (!uno) return x.deb > 1 ? `${x.hec}/${x.deb}` : '';
-    if (uno.tipo === 'sino' || !x.v) return '';
-    return uno.tipo === 'crono' ? `${redondo(x.v)}m` : redondo(x.v);
+  /* El color dice qué pasó; la forma, si tocaba. Un extra va con el color lleno
+     y el borde discontinuo: se hizo, pero fuera de plan. */
+  const PINTA = {
+    cumplido: { clase: 'lleno',   fondo: `background:${col}` },
+    extra:    { clase: 'lleno extra', fondo: `background:${col}` },
+    parcial:  { clase: 'parcial', fondo: `background:color-mix(in srgb, ${col} 42%, var(--card))` },
+    fallado:  { clase: 'fallado', fondo: '' },
+    curso:    { clase: 'curso',   fondo: '' },
+    libre:    { clase: 'vacia',   fondo: '' },
+    futuro:   { clase: 'futuro',  fondo: '' },
   };
+  const DICE = {
+    cumplido: 'cumplido', extra: 'hecho fuera de plan', parcial: 'a medias',
+    fallado: 'tocaba y no se hizo', curso: 'en curso', libre: 'no tocaba',
+    futuro: 'aún no ha llegado',
+  };
+  const LEYENDA = [
+    ['cumplido', 'Cumplido'], ['extra', 'Fuera de plan'], ['parcial', 'A medias'],
+    ['fallado', 'No cumplido'], ['curso', 'En curso'], ['libre', 'No tocaba'],
+  ];
+  const presentes = new Set(celdas.map(x => x.estado));
+
+  /* Un hábito de cantidad enseña su número; un ámbito con varios, el reparto. */
+  const enCasilla = x => {
+    if (!uno) {
+      /* Hoy los pendientes aún no son deuda, pero sí conviene verlos: el
+         denominador incluye lo que queda abierto. */
+      const total = (x.deb || 0) + (x.abiertos || 0);
+      return total > 1 ? `${x.hec}/${total}`
+        : x.estado === 'extra' ? '+' + x.extras : '';
+    }
+    if (uno.tipo === 'sino' || !x.v) return '';
+    const n = redondo(x.v).toLocaleString('es-ES');
+    return uno.tipo === 'crono' ? `${n}m` : n;
+  };
+
+  const casilla = x => {
+    const p = PINTA[x.estado] || PINTA.libre;
+    const ahora = modo === 'dias' ? x.p === dia() : !!x.nota || (modo === 'meses'
+      && x.p === periodo('mes', Date.now()));
+    const val = enCasilla(x);
+    return `<button type="button" class="${p.clase} ${ahora ? 'hoy' : ''}"
+      data-p="${x.p}" ${x.futuro ? 'disabled' : ''} style="${p.fondo}"
+      aria-label="${escapar(x.etq || x.num + ' de ' + rango)}: ${DICE[x.estado]}${
+        uno && x.v ? ', ' + escapar(acumulado(uno, x.v)) : ''}">
+      <span class="n num">${escapar(String(x.etq ?? x.num))}</span>
+      ${val ? `<span class="v num">${val}</span>` : ''}
+    </button>`;
+  };
+
+  const rejilla = modo === 'dias'
+    ? `<div class="calCab" aria-hidden="true">${
+        ['L','M','X','J','V','S','D'].map(x => `<span>${x}</span>`).join('')}</div>
+       <div class="cal" id="calRejilla" role="group" aria-label="Días de ${escapar(rango)}">
+         ${Array.from({length: hueco}, () => '<i class="nada"></i>').join('')}
+         ${celdas.map(casilla).join('')}
+       </div>`
+    : modo === 'meses'
+    ? `<div class="cal meses" id="calRejilla" role="group" aria-label="Meses de ${escapar(rango)}">
+         ${celdas.map(casilla).join('')}
+       </div>`
+    : `<div class="cal semanas" id="calRejilla" role="group"
+         aria-label="Semanas de ${escapar(rango)}">
+         ${celdas.map(casilla).join('')}
+       </div>`;
+
+  const unidad = modo === 'dias' ? ['día','días']
+    : modo === 'semanas' ? ['semana','semanas'] : ['mes','meses'];
+  const vacioTxt = uno
+    ? `A ${escapar(uno.nombre)} no le tocaba nada en ${
+        modo === 'meses' ? 'este año' : 'este mes'}.`
+    : grupoSel ? `Ningún hábito de «${escapar(amb.valor)}» tocaba en este mes.`
+    : 'Ningún hábito diario con objetivo tocaba en este mes.';
 
   c.innerHTML = `
     <label class="campo" style="padding-top:12px">
@@ -486,82 +546,52 @@ function pintarCalendario(c) {
     <div class="navmes" id="calNav"></div>
 
     <div class="panel" style="margin-top:4px">
-      <div class="calCab" aria-hidden="true">${L.map(x => `<span>${x}</span>`).join('')}</div>
-      <div class="cal" id="calRejilla" role="group"
-        aria-label="Días de ${escapar(nombreMes(calOff))}">
-        ${Array.from({length: hueco}, () => '<i class="nada"></i>').join('')}
-        ${celdas.map(x => {
-          const hoy = x.d === dia();
-          /* Tres escalones en vez de un degradado: así el número del día
-             mantiene contraste sobre cualquier fondo, también en modo oscuro. */
-          const clase = x.futuro ? 'futuro'
-            : !x.aplica ? 'vacia'
-            : x.pct === 100 ? 'lleno'
-            : x.pct >= 50 ? 'parcial alto'
-            : x.pct > 0 ? 'parcial' : '';
-          const fondo = x.futuro || !x.aplica ? ''
-            : x.pct === 100 ? `background:${col}`
-            : x.pct >= 50 ? `background:color-mix(in srgb, ${col} 42%, var(--card))`
-            : x.pct > 0 ? `background:color-mix(in srgb, ${col} 18%, var(--card))` : '';
-          return `<button type="button" class="${clase} ${hoy ? 'hoy' : ''}"
-            data-d="${x.d}" ${x.futuro ? 'disabled' : ''} style="${fondo}"
-            aria-label="${x.num} de ${escapar(nombreMes(calOff))}: ${
-              x.futuro ? 'aún no ha llegado'
-              : !x.aplica ? 'no tocaba'
-              : uno ? (x.hecho ? 'cumplido' : 'sin cumplir')
-              : `${x.hec} de ${x.deb} cumplidos`}">
-            <span class="n num">${x.num}</span>
-            ${enCasilla(x) ? `<span class="v num">${enCasilla(x)}</span>` : ''}
-          </button>`;
-        }).join('')}
-      </div>
-      ${debidos ? `<div class="calTot">
-          <span>${uno ? (frec === 'dia' ? 'Días cumplidos' : 'Periodos cumplidos')
-            : grupoSel ? escapar(amb.valor) : 'Cumplido'}</span>
-          <b class="num">${hechos} de ${debidos} · ${Math.round((hechos/debidos)*100)}%</b>
-        </div>`
-        : `<div class="calTot"><span>${
-            uno ? 'Este hábito no tenía nada que cumplir en este mes.'
-            : grupoSel ? `Ningún hábito de «${escapar(amb.valor)}» tocaba en este mes.`
-            : 'Ningún hábito diario con objetivo tocaba en este mes.'
-          }</span></div>`}
+      ${rejilla}
+      ${deb ? `<div class="calTot">
+          <span>${unidad[1].replace(/^./, m => m.toUpperCase())} cumplid${
+            modo === 'semanas' ? 'as' : 'os'}${grupoSel ? ' en ' + escapar(amb.valor) : ''}</span>
+          <b class="num">${hec} de ${deb} · ${Math.round((hec/deb)*100)}%</b>
+        </div>` : `<div class="calTot"><span>${vacioTxt}</span></div>`}
+      ${extras ? `<div class="calTot extra">
+          <span>Fuera de plan</span>
+          <b class="num">+${extras} ${extras === 1 ? unidad[0] : unidad[1]}</b>
+        </div>` : ''}
     </div>
 
-    <div class="calPie">
-      <span><i style="background:${col};border-color:transparent"></i>Todo</span>
-      <span><i style="background:color-mix(in srgb, ${col} 42%, var(--card));border-color:transparent"></i>Mitad o más</span>
-      <span><i style="background:color-mix(in srgb, ${col} 18%, var(--card))"></i>Algo</span>
-      <span><i style="background:var(--card)"></i>Nada</span>
-      <span><i style="background:var(--hueco);border-color:transparent"></i>No tocaba</span>
-    </div>
+    <div class="calPie">${LEYENDA.filter(([e]) => presentes.has(e)).map(([e, nom]) => {
+      const p = PINTA[e];
+      return `<span><i class="${p.clase}" style="${p.fondo}"></i>${nom}</span>`;
+    }).join('')}</div>
 
-    <p class="pieNota">${uno
-      ? (frec === 'dia'
-          ? 'Toca un día para registrar o corregir ese día.'
-          : `Este hábito es ${FRECS[frec].corto}: todos los días de ${
-             frec === 'semana' ? 'una misma semana' : 'un mismo mes'
-             } comparten el estado, y al tocar cualquiera editas el periodo entero.`)
+    <p class="pieNota">${
+      modo === 'semanas' ? `${escapar(uno.nombre)} es semanal, así que cada fila es una semana.
+        Toca una para registrarla o corregirla.`
+      : modo === 'meses' ? `${escapar(uno.nombre)} es mensual: cada casilla es un mes del año.
+        Toca uno para registrarlo o corregirlo.`
+      : uno ? 'Toca un día para registrar o corregir ese día.'
       : 'Toca un día para marcar de golpe lo que tocaba ese día.'}</p>`;
 
   navMes(c.querySelector('#calNav'), calOff,
-    n => { calOff = n; pintarCalendario(c) }, primerDato);
+    n => { calOff = n; pintarCalendario(c) }, primerDato, paso);
 
   c.querySelector('#calAmb').onchange = e => {
     calAmb = e.target.value; calOff = 0; pintarCalendario(c);
   };
 
   c.querySelector('#calRejilla').onclick = e => {
-    const b = e.target.closest('button[data-d]'); if (!b || b.disabled) return;
-    const x = celdas.find(y => y.d === b.dataset.d); if (!x) return;
+    const b = e.target.closest('button[data-p]'); if (!b || b.disabled) return;
     const volver = () => pintarCalendario(c);
-    if (uno) return hojaValor(uno, x.p, volver);
-    hojaDia(x.d, lote, volver);
+    if (uno) return hojaValor(uno, b.dataset.p, volver);
+    hojaDia(b.dataset.p, lote, volver);
   };
 }
 
 /** Un día completo: todo lo que tocaba, editable de una vez. */
 function hojaDia(d, lote, alCerrar) {
-  const del = lote.filter(h => toca(h, d) && d >= periodo('dia', h.t || 0));
+  /* Aparecen todos los del ámbito que ya existían ese día, no solo los que
+     tocaban: una sesión en un día libre también se registra desde aquí. */
+  const nacidos = lote.filter(h => d >= periodo('dia', h.t || 0));
+  const del = [...nacidos.filter(h => toca(h, d)), ...nacidos.filter(h => !toca(h, d))];
   const fecha = desdeDia(d)
     .toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
 
@@ -569,10 +599,11 @@ function hojaDia(d, lote, alCerrar) {
     <p>${del.length ? 'Marca o corrige lo que tocaba este día.' : ''}</p>
     ${del.length ? del.map(h => {
       const v = valorDe(h, d), col = colorDe(h);
-      return `<div class="filaCat2">
+      return `<div class="filaCat2 ${toca(h, d) ? '' : 'fuera'}">
         <span class="punto" style="background:${col}22;color:${col}">${h.emo || '•'}</span>
         <span class="txt"><b>${escapar(h.nombre)}</b>
-          <small>${escapar(h.grupo || 'General')}${
+          <small>${toca(h, d) ? '' : '<span class="fijo">no tocaba</span>'}${
+            escapar(h.grupo || 'General')}${
             h.tipo !== 'sino' && h.objetivo ? ` · objetivo ${h.objetivo}` : ''}</small></span>
         ${h.tipo === 'sino'
           ? `<button type="button" class="marca ${v >= 1 ? 'hecho' : ''}" data-sino="${h.id}"
@@ -584,9 +615,9 @@ function hojaDia(d, lote, alCerrar) {
       </div>`;
     }).join('')
     : vacio({
-        titulo: 'Este día no tocaba nada',
-        cuerpo: 'Ninguno de los hábitos de este ámbito estaba programado para este día '
-              + 'de la semana, o todos se crearon después.'
+        titulo: 'Ningún hábito existía este día',
+        cuerpo: 'Todos los hábitos de este ámbito se crearon después de esta fecha, '
+              + 'así que no hay nada que registrar aquí.'
       })}
     <div class="fila">
       <button id="dCerrar">${del.length ? 'Cancelar' : 'Cerrar'}</button>

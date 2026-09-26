@@ -61,7 +61,9 @@ export function pintar(vista, ir) {
     <div id="habHoy"></div>
   </div>`;
 
-  vista.querySelector('#irGasto').onclick = () => { fin.irASub('anadir'); ir('finanzas') };
+  vista.querySelector('#irGasto').onclick = () => {
+    fin.irASub('anadir', { modulo: 'hoy' }); ir('finanzas');
+  };
   vista.querySelector('#irRevisar')?.addEventListener('click', () => {
     fin.verPorRevisar(); ir('finanzas');
   });

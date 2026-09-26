@@ -1,7 +1,7 @@
 /* ==========================================================================
    Arranque y navegación entre módulos.
    ========================================================================== */
-import { alCambiar, sincronizar, ultimaSync, avisar } from './nucleo.js';
+import { alCambiar, alNavegar, sincronizar, ultimaSync, avisar, aplicarTema } from './nucleo.js';
 import * as hoy from './hoy.js';
 import * as finanzas from './finanzas.js';
 import * as habitos from './habitos-ui.js';
@@ -34,6 +34,12 @@ document.getElementById('tabs').onclick = e => {
 
 /* Cuando cambian los datos, se repinta lo que se está viendo. */
 alCambiar(() => pintar());
+/* Y cualquier módulo puede pedir que se cambie de pestaña. */
+alNavegar(ir);
+
+/* El tema elegido, antes de pintar nada, para que no haya un fogonazo claro. */
+aplicarTema();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => aplicarTema());
 
 /* Las ocho categorías de siempre se crean la primera vez que se abre la app. */
 finanzas.sembrarCategorias();
@@ -42,7 +48,7 @@ finanzas.generarFijos();
 
 /* Parámetros de URL, para los atajos:  ?ver=finanzas  ·  ?add=1  ·  ?cat=comida */
 const p = new URLSearchParams(location.search);
-if (p.has('add')) { finanzas.irASub('anadir'); actual = 'finanzas' }
+if (p.has('add')) { finanzas.irASub('anadir', { modulo: 'hoy' }); actual = 'finanzas' }
 if (p.get('ver') && MODULOS[p.get('ver')]) actual = p.get('ver');
 history.replaceState(null, '', location.pathname);
 

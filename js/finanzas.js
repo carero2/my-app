@@ -4,7 +4,7 @@
 import {
   datos, anadir, actualizar, borrar, restaurar, ajuste, nube, enLote,
   eur, eur0, escapar, dia, inicioMes, finMes, nombreMes, navMes,
-  avisar, abrirHoja, cerrarHoja, confirmar, emitir, vacio,
+  avisar, abrirHoja, cerrarHoja, confirmar, emitir, vacio, irA,
 } from './nucleo.js';
 
 /* Las categorías son una colección más, así que se editan desde la app y viajan
@@ -48,6 +48,7 @@ export function asegurarNoDefinido() {
 export const porRevisar = () => datos.gastos.filter(g => g.revisar);
 export function verPorRevisar() {
   sub = 'lista'; revisando = true; filtro = null; busca = ''; impMin = ''; impMax = '';
+  volverA = null;
 }
 export const sinCategoria = () =>
   datos.gastos.filter(g => g.cat === NO_DEFINIDO.id && g.tipo !== 'ingreso');
@@ -55,6 +56,7 @@ export const sinCategoria = () =>
 export function verSinCategoria() {
   sub = 'lista'; filtro = null; impMin = ''; impMax = ''; revisando = false;
   busca = cat(NO_DEFINIDO.id).nom;
+  volverA = null;
 }
 
 const porOrden = (a, b) => (a.orden ?? 0) - (b.orden ?? 0) || (a.t || 0) - (b.t || 0);
@@ -247,6 +249,9 @@ let sub = 'anadir', off = 0, filtro = null, busca = '', vistaMet = 'mes', anioOf
 let impMin = '', impMax = '';
 let revisando = false;   // bandeja de gastos compartidos por revisar
 let buffer = '', catSel = null, tipoSel = 'gasto', nota = '', fechaSel = null, editando = null;
+/* Dónde estaba el usuario cuando entró a añadir o a editar. Al guardar vuelve
+   ahí: dejarlo en el teclado con la pantalla en blanco no cierra la tarea. */
+let volverA = null;
 /** Nunca devuelve una categoría archivada o inexistente: si la seleccionada
     desaparece, cae en la primera disponible. */
 function catActiva() {
@@ -257,7 +262,7 @@ function catActiva() {
 }
 let abierto = { nota:false, fecha:false };
 
-export function irASub(s) { sub = s }
+export function irASub(s, desde = null) { sub = s; if (s === 'anadir') volverA = desde }
 
 export function pintar(vista) {
   vista.innerHTML = `
@@ -270,6 +275,9 @@ export function pintar(vista) {
     </div>`;
   vista.querySelector('.segmentos').onclick = e => {
     const b = e.target.closest('[data-sub]'); if (!b) return;
+    /* Entrar a Añadir desde aquí no viene de ninguna parte: al guardar,
+       lo natural es caer en Movimientos y ver el apunte recién hecho. */
+    if (b.dataset.sub === 'anadir') volverA = null;
     sub = b.dataset.sub; revisando = false; pintar(vista);
   };
   const cuerpo = vista.querySelector('#finCuerpo');
@@ -395,14 +403,23 @@ function pintarAnadir(c) {
   c.querySelector('#guardar').onclick = () => {
     const imp = valor(); if (imp <= 0) return;
     const campos = { c: imp, cat: catActiva(), n: nota.trim(), tipo: tipoSel };
+    const destino = volverA;
+    let aviso;
     if (editando) {
       actualizar('gastos', editando, { ...campos, t: fechaSel || Date.now(), revisar: false });
-      avisar('Movimiento actualizado');
+      aviso = ['Movimiento actualizado', null];
     } else {
-      anadir('gastos', { ...campos, t: fechaSel || Date.now() });
-      avisar((tipoSel === 'ingreso' ? 'Ingreso de ' : 'Guardado ') + eur(imp));
+      const nuevo = anadir('gastos', { ...campos, t: fechaSel || Date.now() });
+      /* Al volver atrás el movimiento desaparece de la vista: el aviso lleva
+         el deshacer, que es la única forma de corregir un error sin buscarlo. */
+      aviso = [(tipoSel === 'ingreso' ? 'Ingreso de ' : 'Guardado ') + eur(imp),
+        { texto: 'Deshacer', alPulsar: () => { borrar('gastos', nuevo.id); emitir() } }];
     }
-    limpiar(); pintarAnadir(c);
+    limpiar();
+    volverA = null;
+    if (destino?.modulo === 'hoy') { irA('hoy') }
+    else { sub = destino?.sub || 'lista'; pintar(document.getElementById('v-finanzas')) }
+    avisar(...aviso);
   };
 }
 
@@ -427,6 +444,7 @@ function limpiar() {
 export function editarMovimiento(id) {
   const g = datos.gastos.find(x => x.id === id); if (!g) return;
   editando = id;
+  volverA = { modulo: 'finanzas', sub: 'lista' };   // se edita desde la lista
   buffer = g.c.toFixed(2).replace('.', ',').replace(/,00$/, '');
   catSel = g.cat; nota = g.n || ''; fechaSel = g.t; tipoSel = g.tipo === 'ingreso' ? 'ingreso' : 'gasto';
   abierto = { nota:false, fecha:false };

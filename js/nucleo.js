@@ -83,6 +83,39 @@ export const ajuste = (nombre, valor) => {
   return valor;
 };
 
+/* ---------- Tema ----------
+   'auto' sigue al sistema; 'claro' y 'oscuro' mandan sobre él. El atributo va
+   en <html> para que el CSS lo lea, y el theme-color del navegador se ajusta a
+   la vez: si no, la barra de estado del iPhone se queda del color contrario. */
+export const TEMAS = { auto:'El del sistema', claro:'Claro', oscuro:'Oscuro' };
+
+export function temaActual() {
+  const t = ajuste('tema');
+  return TEMAS[t] ? t : 'auto';
+}
+
+export function aplicarTema(t = temaActual()) {
+  const raiz = document.documentElement;
+  if (t === 'auto') raiz.removeAttribute('data-tema');
+  else raiz.setAttribute('data-tema', t);
+  const oscuro = t === 'oscuro' ||
+    (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelector('meta[name=theme-color]')
+    ?.setAttribute('content', oscuro ? '#141517' : '#F5F4F0');
+}
+
+export function fijarTema(t) {
+  ajuste('tema', t === 'auto' ? null : t);
+  aplicarTema(t);
+}
+
+/* ---------- Navegación ----------
+   app.js registra aquí su función de cambiar de módulo, para que finanzas o
+   hábitos puedan devolver al usuario a Hoy sin importar app.js (sería un ciclo). */
+let navegar = null;
+export const alNavegar = f => { navegar = f };
+export const irA = modulo => navegar?.(modulo);
+
 /* ---------- Suscripciones ---------- */
 const oyentes = new Set();
 export const alCambiar = fn => oyentes.add(fn);
@@ -463,15 +496,21 @@ export function vacio({ titulo, cuerpo = '', accion = '' }) {
     ${accion ? `<button type="button" data-vacio>${escapar(accion)}</button>` : ''}</div>`;
 }
 
-/* ---------- Navegación por mes, reutilizada por varios módulos ---------- */
-export function navMes(destino, off, alCambiarMes, primerDato) {
+/* ---------- Navegación por mes (o por año), reutilizada por varios módulos ---------- */
+export function navMes(destino, off, alCambiarMes, primerDato, paso = 'mes') {
+  const anual = paso === 'anio';
+  const rotulo = anual ? String(new Date().getFullYear() + off) : nombreMes(off);
+  const hayAtras = anual
+    ? new Date(new Date().getFullYear() + off, 0, 1).getTime() > primerDato
+    : inicioMes(off).getTime() > primerDato;
+  const nom = anual ? 'año' : 'mes';
   destino.innerHTML =
-    `<button data-d="-1" ${inicioMes(off).getTime() > primerDato ? '' : 'disabled'}
-       aria-label="Ver el mes anterior" data-tip="Mes anterior">‹</button>
-     <b>${nombreMes(off)}</b>
-     ${off ? '<button class="hoy" data-ir="0">Hoy</button>' : ''}
+    `<button data-d="-1" ${hayAtras ? '' : 'disabled'}
+       aria-label="Ver el ${nom} anterior" data-tip="${anual ? 'Año' : 'Mes'} anterior">‹</button>
+     <b>${rotulo}</b>
+     ${off ? `<button class="hoy" data-ir="0">${anual ? 'Este año' : 'Hoy'}</button>` : ''}
      <button data-d="1" ${off < 0 ? '' : 'disabled'}
-       aria-label="Ver el mes siguiente" data-tip="Mes siguiente">›</button>`;
+       aria-label="Ver el ${nom} siguiente" data-tip="${anual ? 'Año' : 'Mes'} siguiente">›</button>`;
   destino.onclick = e => {
     const ir = e.target.closest('button[data-ir]');
     if (ir) { alCambiarMes(0); return }

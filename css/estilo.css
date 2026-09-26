@@ -56,8 +56,10 @@
   --curva:cubic-bezier(.32,.72,0,1);
 }
 
+/* El tema se elige en Ajustes. Con «automático» manda el sistema; con claro u
+   oscuro, el atributo data-tema del <html> gana siempre. */
 @media (prefers-color-scheme: dark){
-  :root{
+  :root:not([data-tema="claro"]){
     --paper:#141517; --card:#1E2023; --hueco:#272A2E;
     --ink:#F0EEE9; --muted:#9E9990;
     --line:#33363A;
@@ -67,6 +69,15 @@
     /* En oscuro el borde solo no separa: un filo claro arriba da el relieve. */
     --brillo:inset 0 1px 0 rgba(255,255,255,.045);
   }
+}
+:root[data-tema="oscuro"]{
+  --paper:#141517; --card:#1E2023; --hueco:#272A2E;
+  --ink:#F0EEE9; --muted:#9E9990;
+  --line:#33363A;
+  --acento:#8DB4E0; --acento-flojo:#1E2A36;
+  --ingreso:#68B27B; --alerta:#E2755C; --aviso:#DBA23F;
+  --sombra:0 1px 2px rgba(0,0,0,.28);
+  --brillo:inset 0 1px 0 rgba(255,255,255,.045);
 }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -328,20 +339,51 @@ svg.graf{width:100%;height:110px;overflow:visible;margin-top:var(--e3);display:b
 .cal button.vacia{background:var(--hueco);box-shadow:none;border-color:transparent}
 .cal button.lleno{border-color:transparent;color:#fff;box-shadow:none}
 .cal button.lleno .v{color:rgba(255,255,255,.88)}
-.cal button.parcial{color:var(--ink)}
+.cal button.parcial{color:var(--ink);border-color:transparent;box-shadow:none}
 .cal button.parcial .v{color:var(--muted)}
-.cal button.parcial.alto{border-color:transparent;box-shadow:none}
+/* Tocaba y no se hizo: un tinte de alerta, no un grito. Se distingue a simple
+   vista de un día en el que sencillamente no había nada que cumplir. */
+.cal button.fallado{background:color-mix(in srgb, var(--alerta) 14%, var(--card));
+  border-color:color-mix(in srgb, var(--alerta) 38%, var(--card));color:var(--ink);box-shadow:none}
+/* Fuera de plan: el color dice que se hizo, el borde discontinuo que no tocaba. */
+.cal button.extra{border:2px dashed var(--paper);outline:1px solid var(--line);outline-offset:-1px}
+/* El periodo en curso todavía no ha fallado: ni rojo ni gris, sólo abierto. */
+.cal button.curso{background:var(--card);border-style:dashed;
+  border-color:color-mix(in srgb, var(--acento) 50%, var(--line));color:var(--ink)}
 .cal button.hoy{outline:2px solid var(--acento);outline-offset:-2px}
+
+/* Un hábito semanal no cabe en un cuadrado: cada semana es una fila con su rango. */
+.cal.semanas{grid-template-columns:1fr;gap:var(--e2)}
+.cal.semanas button{aspect-ratio:auto;min-height:52px;justify-items:start;
+  grid-template-columns:1fr auto;grid-auto-flow:column;
+  padding:var(--e3) var(--e4);font-size:var(--t-base);text-align:left}
+.cal.semanas button .n{font-weight:500}
+.cal.semanas button .v{font-size:var(--t-aux)}
+.cal.meses{grid-template-columns:repeat(3,1fr);gap:var(--e2)}
+.cal.meses button{aspect-ratio:1.35;font-size:var(--t-base)}
+.cal.meses button .n{text-transform:capitalize}
 .calPie{display:flex;align-items:center;justify-content:center;gap:var(--e2) var(--e3);flex-wrap:wrap;
   padding:var(--e4) 0 0;font-size:var(--t-meta);color:var(--muted)}
 .calPie span{display:inline-flex;align-items:center;gap:var(--e2)}
 .calPie i{width:14px;height:14px;border-radius:4px;display:block;flex:none;
-  border:1px solid var(--line)}
+  border:1px solid var(--line);box-sizing:border-box}
+.calPie i.lleno{border-color:transparent}
+.calPie i.lleno.extra{border:2px dashed var(--paper);outline:1px solid var(--line);
+  outline-offset:-1px}
+.calPie i.fallado{background:color-mix(in srgb, var(--alerta) 14%, var(--card));
+  border-color:color-mix(in srgb, var(--alerta) 38%, var(--card))}
+.calPie i.curso{background:var(--card);border-style:dashed;
+  border-color:color-mix(in srgb, var(--acento) 50%, var(--line))}
+.calPie i.vacia{background:var(--hueco);border-color:transparent}
 .calTot{display:flex;justify-content:space-between;align-items:baseline;gap:var(--e3);
   background:var(--hueco);border-radius:var(--r2);padding:var(--e3) var(--e4);
   margin-top:var(--e3);font-size:var(--t-aux);color:var(--muted)}
 .calTot span{min-width:0}
 .calTot b{color:var(--ink);font-weight:600;letter-spacing:-.01em;flex:none;white-space:nowrap}
+.calTot.extra{background:transparent;border:1px dashed var(--line);margin-top:var(--e2)}
+
+/* En la hoja del día, lo que no tocaba se atenúa sin dejar de ser editable. */
+.filaCat2.fuera .txt b{color:var(--muted)}
 
 /* Acumulado del resumen */
 .logro{display:flex;align-items:center;gap:var(--e3);background:var(--card);

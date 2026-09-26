@@ -14,6 +14,7 @@ de sobra este uso.
 
 - [Características](#características)
 - [Cómo funciona](#cómo-funciona)
+- [Reglas de diseño](#reglas-de-diseño)
 - [Estructura del proyecto](#estructura-del-proyecto)
 - [Requisitos](#requisitos)
 - [Instalación](#instalación)
@@ -22,6 +23,9 @@ de sobra este uso.
   - [3. Desplegar el Worker (opcional)](#3-desplegar-el-worker-opcional)
   - [4. Conectar la app con el Worker](#4-conectar-la-app-con-el-worker)
 - [Uso](#uso)
+  - [Qué pasa al guardar un movimiento](#qué-pasa-al-guardar-un-movimiento)
+  - [El calendario](#el-calendario)
+  - [Apariencia](#apariencia)
 - [Integración con Atajos de iOS](#integración-con-atajos-de-ios)
 - [Importar movimientos desde CSV](#importar-movimientos-desde-csv)
 - [Modelo de datos](#modelo-de-datos)
@@ -420,33 +424,76 @@ Cada ventana solo incluye los hábitos cuyo periodo cabe dentro: los mensuales n
 en el resumen semanal, porque su periodo es más largo que la ventana. Un aviso al pie indica
 cuántos quedan fuera y dónde verlos.
 
+### Qué pasa al guardar un movimiento
+
+Guardar es el final de una tarea, no un paso intermedio, así que la app te devuelve de donde
+viniste en vez de dejarte en el teclado mirando una pantalla en blanco:
+
+| Entraste desde | Al guardar vuelves a |
+|---|---|
+| Hoy, con «Añadir gasto» | Hoy, con el total del día ya actualizado |
+| Movimientos, tocando una fila para editarla | Movimientos |
+| La pestaña Añadir | Movimientos, donde ves el apunte recién hecho |
+| El atajo de iOS (`?add=1`) | Hoy |
+
+Como el movimiento desaparece de la vista al cambiar de pantalla, el aviso de confirmación
+lleva **Deshacer**: es la única forma de corregir un dedazo sin tener que ir a buscarlo.
+
 ### El calendario
 
-Dentro de Hábitos, junto a Resumen, hay un **Calendario** que enseña el mes completo. El
-selector de arriba decide qué se mide en cada casilla:
+Dentro de Hábitos, junto a Resumen, hay un **Calendario**. El selector de arriba decide qué se
+mide en cada casilla:
 
-| Ámbito | Qué pinta cada día |
+| Ámbito | Qué pinta cada casilla |
 |---|---|
-| Todos los hábitos diarios | cuántos de los que tocaban ese día se cumplieron (`2/3`) |
-| Por sección | lo mismo, pero solo con los hábitos de ese grupo, y con su color |
+| Todos los hábitos diarios | cuántos de los que tocaban se cumplieron (`2/3`) |
+| Por sección | lo mismo con los hábitos de ese grupo, y con su color |
 | Un hábito concreto | si se cumplió, y la cantidad registrada si la tiene |
 
-Las casillas tienen cuatro escalones —todo, la mitad o más, algo, nada— más un quinto para
-los días en los que no tocaba nada. Son escalones y no un degradado continuo a propósito:
-un degradado deja el número del día ilegible justo en la franja media, y peor en modo oscuro.
+**La rejilla usa la unidad del hábito, no siempre el día.** Una cuadrícula de treinta casillas
+no dice nada de un hábito semanal: repite cuatro datos treinta veces. Por eso un hábito
+semanal se dibuja como una fila por semana, con su rango de fechas, y uno mensual como una
+rejilla de los doce meses del año, con la navegación pasando a años.
 
-Un hábito **semanal o mensual** no se cumple «un día»: en ese caso todos los días del mismo
-periodo comparten el estado, la semana entera se pinta igual, y el total cuenta periodos
-(«3 de 4») en vez de días. Al tocar cualquier día de esa semana se edita el periodo entero.
+Cada casilla tiene uno de seis estados:
 
-Tocar un día abre lo que corresponde: la hoja de ese hábito si el ámbito es uno solo, o una
-hoja con **todo lo que tocaba ese día** —una casilla por hábito de sí/no, un número por los
-de cantidad o cronómetro— para marcarlo de una vez. La rejilla se dibuja siempre, incluso en
-un mes sin nada registrado; en ese caso el mensaje va dentro de la propia tarjeta del
-calendario, no en su lugar.
+| Estado | Aspecto | Cuándo |
+|---|---|---|
+| Cumplido | color lleno | se cumplió lo que tocaba |
+| Fuera de plan | color lleno, borde discontinuo | **no tocaba, pero lo hiciste** |
+| A medias | color al 42% | había algo registrado, pero no llegó al objetivo |
+| No cumplido | tinte de alerta | **tocaba y no se hizo** |
+| En curso | borde discontinuo con el acento | el día, semana o mes que aún no ha terminado |
+| No tocaba | gris hundido | no había nada que cumplir y no se hizo nada |
 
-El botón **Hoy** aparece en la barra del mes en cuanto te mueves de mes, para volver de un
+Dos decisiones de fondo:
+
+**Una sesión fuera de plan cuenta.** Si entrenas un sábado que no tocaba, la casilla se pinta
+con el color del hábito: es lo que de verdad hiciste. Suma en un contador aparte,
+«Fuera de plan», y nunca resta del porcentaje.
+
+**El periodo en curso no se ha fallado todavía.** El día de hoy, la semana en curso y el mes
+en curso no se pintan en rojo ni cuentan como debidos hasta que terminan. Marcar en rojo a
+las nueve de la mañana lo que aún puedes cumplir es mentir sobre tus datos.
+
+La leyenda solo enseña los estados que aparecen en lo que estás mirando; no tiene sentido
+explicar «fuera de plan» en un calendario donde no hay ninguno.
+
+Tocar una casilla abre lo que corresponde: la hoja de ese hábito si el ámbito es uno solo, o
+una hoja con **todo lo que existía ese día** —lo que tocaba primero, y debajo lo que no, para
+poder registrar también una sesión fuera de plan—. La rejilla se dibuja siempre, incluso en un
+mes sin nada; en ese caso el mensaje va dentro de la propia tarjeta del calendario.
+
+El botón **Hoy** (o **Este año**) aparece en la barra en cuanto te mueves, para volver de un
 toque.
+
+### Apariencia
+
+En Ajustes → Apariencia se elige entre **el del sistema**, **claro** y **oscuro**. Con el
+primero la app sigue al teléfono, incluido el cambio automático al anochecer; con los otros
+dos manda la app. La elección se guarda y se aplica antes de pintar nada, para que no haya un
+fogonazo claro al abrir, y arrastra consigo el `theme-color` del navegador: si no, la barra de
+estado del iPhone se queda del color contrario.
 
 Las sesiones registradas en días libres no cuentan como obligación pero se suman aparte
 como **sesiones fuera de plan**, así que un entrenamiento extra suma sin poder bajar el
