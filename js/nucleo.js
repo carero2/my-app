@@ -3,7 +3,8 @@
    Cada módulo importa de aquí; nadie habla con localStorage directamente.
    ========================================================================== */
 
-export const COLECCIONES = ['gastos', 'habitos', 'registros', 'notas', 'categorias', 'fijos'];
+export const COLECCIONES = ['gastos', 'habitos', 'registros', 'notas', 'categorias', 'fijos',
+                            'inversiones', 'invmov', 'posiciones'];
 
 const K = {
   datos:  c => 'vida.' + c,
@@ -63,6 +64,59 @@ export const inicioMes = off => { const d = new Date(); return new Date(d.getFul
 export const finMes    = off => new Date(inicioMes(off+1).getTime() - 1);
 export const nombreMes = off => inicioMes(off)
   .toLocaleDateString('es-ES', {month:'long', year:'numeric'}).replace(/^./, m => m.toUpperCase());
+
+/* ---------- Mes contable ----------
+   Quien cobra el 28 no vive en meses naturales: su «septiembre» va del 28 de
+   agosto al 27 de septiembre. Con un día de inicio configurado, Finanzas usa
+   ese ciclo en vez del mes del calendario. Hábitos no lo usa: sus periodos son
+   del calendario y cambiarlos reescribiría registros ya guardados.
+
+   El nombre lo pone el mes que domina el ciclo. Con día 28, el ciclo que
+   arranca el 28 de agosto tiene 27 días de septiembre y 4 de agosto, así que
+   se llama septiembre; con día 5, el que arranca el 5 de septiembre se llama
+   septiembre también. La frontera está en el 16. */
+const diasDe = (a, m) => new Date(a, m + 1, 0).getDate();
+
+export function cicloDia() {
+  const d = ajuste('cicloInicio');
+  return Number.isInteger(d) && d >= 1 && d <= 31 ? d : null;
+}
+
+export function inicioCiclo(off = 0) {
+  const D = cicloDia();
+  if (!D) return inicioMes(off);
+  const hoy = new Date();
+  let a = hoy.getFullYear(), m = hoy.getMonth();
+  /* Si todavía no se ha llegado al día de corte, el ciclo en curso empezó el
+     mes pasado. Un día 31 se queda en el último día de los meses cortos. */
+  if (hoy.getDate() < Math.min(D, diasDe(a, m))) m -= 1;
+  m += off;
+  return new Date(a, m, Math.min(D, diasDe(a, m)));
+}
+
+export const finCiclo = (off = 0) => new Date(inicioCiclo(off + 1).getTime() - 1);
+
+/** Días que dura el ciclo: con mes contable no son los del mes natural.
+ *  Se mide de inicio a inicio, no hasta el fin (que es un milisegundo antes),
+ *  y se redondea porque el cambio de hora mete una hora de más o de menos. */
+export const diasCiclo = (off = 0) =>
+  Math.round((inicioCiclo(off + 1).getTime() - inicioCiclo(off).getTime()) / 86400000);
+
+export function nombreCiclo(off = 0) {
+  const D = cicloDia();
+  if (!D) return nombreMes(off);
+  const ini = inicioCiclo(off);
+  const etq = new Date(ini.getFullYear(), ini.getMonth() + (D >= 16 ? 1 : 0), 1);
+  return etq.toLocaleDateString('es-ES', {month:'long', year:'numeric'})
+    .replace(/^./, m => m.toUpperCase());
+}
+
+/** El rango en claro, para que el usuario vea qué está mirando. */
+export function rangoCiclo(off = 0) {
+  if (!cicloDia()) return '';
+  const f = d => d.toLocaleDateString('es-ES', { day:'numeric', month:'short' }).replace('.', '');
+  return `${f(inicioCiclo(off))} – ${f(finCiclo(off))}`;
+}
 
 const leerJSON = (k, alt) => { try { return JSON.parse(localStorage.getItem(k)) ?? alt } catch { return alt } };
 
@@ -499,15 +553,19 @@ export function vacio({ titulo, cuerpo = '', accion = '' }) {
 /* ---------- Navegación por mes (o por año), reutilizada por varios módulos ---------- */
 export function navMes(destino, off, alCambiarMes, primerDato, paso = 'mes') {
   const anual = paso === 'anio';
-  const rotulo = anual ? String(new Date().getFullYear() + off) : nombreMes(off);
+  const esCiclo = paso === 'ciclo';
+  const rotulo = anual ? String(new Date().getFullYear() + off)
+    : esCiclo ? nombreCiclo(off) : nombreMes(off);
   const hayAtras = anual
     ? new Date(new Date().getFullYear() + off, 0, 1).getTime() > primerDato
-    : inicioMes(off).getTime() > primerDato;
+    : (esCiclo ? inicioCiclo(off) : inicioMes(off)).getTime() > primerDato;
   const nom = anual ? 'año' : 'mes';
+  /* Con mes contable el nombre no basta: hay que ver de qué día a qué día. */
+  const sub = esCiclo ? rangoCiclo(off) : '';
   destino.innerHTML =
     `<button data-d="-1" ${hayAtras ? '' : 'disabled'}
        aria-label="Ver el ${nom} anterior" data-tip="${anual ? 'Año' : 'Mes'} anterior">‹</button>
-     <b>${rotulo}</b>
+     <b>${rotulo}${sub ? `<small>${sub}</small>` : ''}</b>
      ${off ? `<button class="hoy" data-ir="0">${anual ? 'Este año' : 'Hoy'}</button>` : ''}
      <button data-d="1" ${off < 0 ? '' : 'disabled'}
        aria-label="Ver el ${nom} siguiente" data-tip="${anual ? 'Año' : 'Mes'} siguiente">›</button>`;

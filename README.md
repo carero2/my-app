@@ -1,6 +1,6 @@
 # My-app
 
-App personal de seguimiento diario: **finanzas**, **hábitos** y **notas**.
+App personal de seguimiento diario: **finanzas**, **hábitos** e **inversiones**.
 
 Es una aplicación web progresiva (PWA) que se instala en la pantalla de inicio del iPhone,
 funciona sin conexión y sincroniza los datos entre dispositivos a través de un Cloudflare
@@ -23,7 +23,9 @@ de sobra este uso.
   - [3. Desplegar el Worker (opcional)](#3-desplegar-el-worker-opcional)
   - [4. Conectar la app con el Worker](#4-conectar-la-app-con-el-worker)
 - [Uso](#uso)
+  - [Inversiones](#inversiones)
   - [Qué pasa al guardar un movimiento](#qué-pasa-al-guardar-un-movimiento)
+  - [El mes contable](#el-mes-contable)
   - [El calendario](#el-calendario)
   - [Apariencia](#apariencia)
 - [Integración con Atajos de iOS](#integración-con-atajos-de-ios)
@@ -56,6 +58,7 @@ de sobra este uso.
   gasto mes a mes y desglose por categoría con su media mensual
 - Importación desde CSV con detección de duplicados y autocategorización
 - Exportación a CSV
+- Mes contable propio: el mes puede empezar el día que tú cobras, no el 1
 - Gastos fijos que se registran solos cada mes
 - Búsqueda por concepto, categoría o importe, con filtro por rango de importe
 - Notas sugeridas a partir de las que ya has usado
@@ -76,11 +79,6 @@ de sobra este uso.
   concreta o un hábito suelto (incluidos los semanales y mensuales)
 - Archivar en vez de borrar, conservando el historial
 
-**Notas**
-- Título, categoría y texto libre
-- Las categorías funcionan como submódulos, cada una con su color
-- Vista de lectura aparte de la de edición, y búsqueda en título y texto
-
 **Generales**
 - Funciona sin conexión, incluida la escritura
 - Sincronización entre dispositivos con cola de pendientes
@@ -89,6 +87,14 @@ de sobra este uso.
 - Copia de seguridad y restauración en JSON
 
 ---
+
+**Inversiones**
+- Carteras con sus aportaciones y reembolsos en una sola línea de tiempo
+- Tres formas de saber lo que vale, según lo que puedas conseguir: precios automáticos por
+  ISIN, valor anotado a mano, o estimación a un interés anual
+- Valor liquidativo de fondos europeos por ISIN, servido por tu Worker y cacheado
+- Rentabilidad anualizada por TIR, no por regla de tres
+- Gráfica de lo aportado frente a lo que vale, y reparto por fondo
 
 ## Cómo funciona
 
@@ -171,8 +177,10 @@ my-app/
 │   ├── hoy.js                pestaña Hoy
 │   ├── finanzas.js           añadir, movimientos, métricas e importador CSV
 │   ├── habitos.js            hábitos, periodos, rachas y resumen
-│   ├── notas.js              notas por categoría
-│   └── ajustes.js            nube, presupuesto, copias y zona de riesgo
+│   ├── habitos-ui.js         interfaz de hábitos: tarjetas, resumen y calendario
+│   ├── inversiones.js        carteras, TIR y proyección
+│   ├── inversiones-ui.js     interfaz de inversiones
+│   └── ajustes.js            nube, presupuesto, mes contable, apariencia y copias
 └── icons/
     ├── apple-touch-icon.png  180×180, el que usa iOS
     ├── icon-192.png
@@ -303,7 +311,6 @@ inicio, el ordenador). Cada uno guarda la configuración por separado.
 | **Hoy** | Pantalla de inicio: gasto del día y del mes, y los hábitos listos para marcar |
 | **Finanzas** | Añadir movimiento, listado por meses y métricas |
 | **Hábitos** | Los grupos que definas, más un resumen con métricas y un calendario del mes |
-| **Notas** | Notas por categoría |
 | **Ajustes** | Nube, presupuesto, importación, copias y borrado |
 
 **Añadir un gasto:** teclado numérico, categoría y guardar. El botón `↓ Gasto` lo cambia a
@@ -337,7 +344,6 @@ un filtro **desde / hasta** para acotar por importe. Los dos se combinan, y con 
 activo se ignora el mes seleccionado: se busca en todo el histórico. Arriba de los resultados
 aparece el recuento, el total y la media de lo encontrado, que es lo que suele interesar
 («¿cuánto llevo gastado en cafés este año?»). La ✕ quita todos los filtros de golpe.
-En Notas se busca en el título y en el texto.
 
 **Repetir un movimiento.** Una pulsación larga sobre cualquier fila de Movimientos crea una
 copia con la fecha de ahora, con opción de deshacer. Para el café de todos los días.
@@ -439,6 +445,108 @@ viniste en vez de dejarte en el teclado mirando una pantalla en blanco:
 Como el movimiento desaparece de la vista al cambiar de pantalla, el aviso de confirmación
 lleva **Deshacer**: es la única forma de corregir un dedazo sin tener que ir a buscarlo.
 
+### Inversiones
+
+Una **cartera** es un conjunto de aportaciones y un valor. Puedes tener varias (la cartera
+indexada, un plan de pensiones) y cada una se sigue como mejor convenga:
+
+| Modo | Qué hace | Para qué sirve |
+|---|---|---|
+| **Precios automáticos** | Apuntas las posiciones y el Worker busca su precio | Lo más fiel, y se mantiene solo entre movimientos |
+| **Valor a mano** | Apuntas tú el total cuando lo consultes | Carteras gestionadas: el banco ya te da ese número |
+| **Estimación** | Proyecta lo aportado a un interés anual que fijas tú | Hacerse una idea, no saber |
+
+**Cuál te conviene.** En una cartera gestionada tus títulos de cada fondo cambian cada vez que
+aportas, y además cuando el gestor rebalancea, si es una cartera gestionada. Eso no invalida el
+modo automático: **entre dos movimientos la valoración es exacta**, porque los títulos no se
+mueven solos y lo único que cambia es el precio, que ya se busca solo. Lo que hacía impracticable
+ese modo era tener que teclear los títulos de cada posición, y para eso está el importador:
+pegas la tabla de posiciones de tu banco y se actualiza todo.
+
+**Cuándo hay que volver a pegarla:** cuando aportes, vendas, o sepas que han rebalanceado. Entre
+medias no hace falta tocar nada. Si se queda vieja, la app lo detecta —sabe qué aportaciones has
+registrado después del último extracto— y avisa de cuánto se está quedando corto el valor, en
+vez de enseñar un número mal sin decir nada.
+
+Así que el modo automático sirve igual para una cartera gestionada que para una propia. El modo
+a mano queda para quien prefiera no mantener las posiciones y copiar solo el total.
+
+### Pegar el extracto
+
+En modo automático, el botón **Pegar extracto** acepta la tabla de posiciones tal cual la copias
+del banco, con cabeceras y columnas de sobra. De cada fila saca el ISIN, los títulos y, si viene,
+el valor de mercado en euros, que se anota como valoración del día.
+
+No se asume ningún formato concreto, solo que cada fila lleve un identificador y una cantidad.
+Los ISIN se reconocen en cualquier parte de la línea porque su formato es inconfundible. Los
+**tickers** solo se aceptan cuando abren la línea y les sigue una cantidad: un ticker suelto es
+indistinguible de una palabra cualquiera, y sin esa cautela un texto corriente generaría
+posiciones inventadas llamadas «EUR» o «TOTAL».
+Dos detalles que hacen falta para que funcione con extractos reales:
+
+- Hay tablas donde **los títulos llevan el punto como separador decimal** (`3.52`
+  participaciones) mientras que **los importes de la misma tabla llevan la coma** (`184,8400 €`).
+  El lector mira cuál es el último separador de cada número en vez de asumir una convención.
+- Muchos nombres de producto llevan cifras («S&P 500 INDEX», «VG 20 EUR TREAS»), así que los
+  títulos se buscan como el último número antes del primer importe con divisa, no como el
+  primer número de la fila.
+
+Lo que esté en la app y no aparezca en el extracto se entiende vendido y se quita.
+
+**La rentabilidad se calcula por TIR**, no dividiendo la ganancia entre lo aportado. Con
+aportaciones repartidas en el tiempo esa división miente: mil euros puestos hace cinco años y
+mil puestos el mes pasado no han trabajado lo mismo. La TIR busca el interés anual que, aplicado
+a cada aportación desde el día que la hiciste, da exactamente el valor de hoy. Hacen falta al
+menos dos meses de recorrido para que el número signifique algo; antes, se muestra un guion.
+
+**De dónde salen los precios.** Para acciones y ETFs hay ticker y Yahoo Finance los sirve. Los
+fondos de inversión son el caso difícil: no cotizan en bolsa, así que no hay ticker ni precio
+intradía, solo un valor liquidativo que la gestora publica una vez al día y con un día de
+retraso. Las APIs financieras con plan gratuito (Twelve Data, Financial Modeling Prep, Alpha
+Vantage) excluyen los fondos europeos, así que la fuente es la ficha pública de **quefondos.com**,
+que cubre todo lo registrado en España y no pide clave; Yahoo queda de respaldo también para
+ellos. Las llamadas las hace tu Worker, no el navegador, y el resultado se cachea doce horas en
+KV: pedirlo más a menudo no devolvería nada nuevo.
+
+El identificador decide la ruta: un ISIN va primero a quefondos y luego a Yahoo; un ticker va
+directo a Yahoo, que es quien lo conoce.
+
+**Divisas.** Un fondo en dólares no se puede sumar a uno en euros: tratar 192,86 $ como 192,86 €
+infla esa posición un 12%. El Worker convierte con el tipo del Banco Central Europeo, servido por
+frankfurter.dev, y cachea el cambio como los valores liquidativos. Si un día no hay tipo de
+cambio, la posición se queda sin valorar antes que valorarse mal.
+
+Si un fondo no se puede valorar, la app lo dice y **no** inventa un total: una cartera a medio
+valorar daría un número falso. El último valor conocido se guarda en el móvil, así que la cartera
+se puede mirar sin cobertura.
+
+**Añadir posiciones.** Cada una necesita su identificador y la cantidad. Para un fondo, el ISIN
+(12 caracteres: dos letras de país, nueve y un dígito) y las participaciones. Para una acción o
+un ETF, su ticker. Con más de dos o tres posiciones, pegar la tabla sale mucho más a cuenta que
+añadirlas una a una.
+
+**Lo que esta app no hace** es decirte qué comprar. Calcula sobre tus datos; no opina sobre el
+mercado.
+
+### El mes contable
+
+Por defecto el mes es el del calendario. Si cobras a final de mes, eso no cuadra con cómo
+piensas tu dinero: lo que gastas el 29 de agosto sale de la nómina de agosto, no de la de
+julio. En **Ajustes → Mes contable** eliges el día en que arranca tu mes.
+
+Con el día 28, tu «septiembre» va del **28 de agosto al 27 de septiembre**, ambos incluidos:
+el gasto del propio día de cobro ya cae en el mes nuevo. El nombre lo pone el mes que ocupa
+casi entero el ciclo, así que con día 28 se llama septiembre, y con día 5 el ciclo que arranca
+el 5 de septiembre también se llama septiembre. La frontera está en el día 16.
+
+Un día que no existe en el mes se ajusta al último: con el día 31, febrero empieza el 28 (o el
+29 en bisiesto). La barra del mes enseña siempre el rango, para que no haya que adivinarlo.
+
+Esto afecta a **Finanzas**: el listado por meses, el presupuesto, las métricas mensuales y el
+gasto medio por día, que se calcula sobre los días del ciclo y no sobre los del mes natural.
+No afecta a **Hábitos** ni al resumen anual: sus periodos son del calendario y cambiarlos
+reescribiría registros ya guardados.
+
 ### El calendario
 
 Dentro de Hábitos, junto a Resumen, hay un **Calendario**. El selector de arriba decide qué se
@@ -501,8 +609,7 @@ porcentaje. El bloque **Acumulado** muestra el total de cada hábito de cantidad
 cronómetro en la ventana elegida: horas entrenadas, páginas leídas, kilómetros.
 
 **Colores.** El color pertenece al grupo, no al hábito, y se asigna solo al crear el primero
-de ese grupo. Cambiarlo desde cualquier hábito recolorea todo el grupo. Las categorías de
-notas funcionan igual.
+de ese grupo. Cambiarlo desde cualquier hábito recolorea todo el grupo.
 
 **Rachas:** cuentan periodos consecutivos cumplidos. Un hábito semanal cuenta semanas y uno
 mensual cuenta meses. El periodo en curso no rompe la racha mientras aún pueda completarse.
@@ -634,7 +741,7 @@ También puedes abrir la app en un punto concreto con parámetros de URL:
 | Parámetro | Efecto |
 |---|---|
 | `?add=1` | Abre directamente el teclado de gastos |
-| `?ver=habitos` | Abre un módulo: `hoy`, `finanzas`, `habitos`, `notas` o `ajustes` |
+| `?ver=habitos` | Abre un módulo: `hoy`, `finanzas`, `habitos` o `ajustes` |
 | `?cat=comida` | Preselecciona una categoría |
 
 ---
@@ -726,11 +833,6 @@ otro dispositivo, se adopta la del servidor en vez de pisarla con los valores po
 El campo `ultimo` guarda el mes en que se generó por última vez, para no duplicar.
 Los movimientos que crean llevan `fijo` con el id de su plantilla.
 
-**notas**
-```js
-{ id, t, titulo: 'Idea', cat: 'Trabajo', color: '#4E8A5B', texto: '…', m: 1757000000000 }
-```
-
 ### Claves de `localStorage`
 
 Conservan el prefijo `vida.` del nombre anterior del proyecto. **No las cambies:** hacerlo
@@ -738,7 +840,7 @@ dejaría la app vacía en todos los dispositivos, porque no sabría dónde busca
 guardados.
 
 ```
-vida.gastos  vida.habitos  vida.registros  vida.notas
+vida.gastos  vida.habitos  vida.registros
 vida.cola.<colección>      ids borrados pendientes de subir
 vida.nube                  { url, clave }
 vida.ajuste.catsSembradas    true una vez creadas las categorías iniciales
@@ -789,6 +891,26 @@ Las rutas antiguas `/gastos` y `/borrados` siguen funcionando como alias de
 | `507` | La colección alcanzó su límite |
 
 ---
+
+### `GET|POST /vl`
+
+Valor liquidativo de uno o varios fondos por ISIN. Por GET, `?isin=IE00B1G3DH73,IE00B246KL88`;
+por POST, `{"isin": ["IE00B1G3DH73"]}`. Añade `?forzar=1` para saltarse la caché.
+
+```json
+{ "vl": { "IE00BDZVHT63": { "nav": 8.2229, "moneda": "USD", "navEur": 7.3255, "tasa": 0.89087,
+                            "fecha": "2026-10-01", "nom": "MSCI PACIFIC EX JAPAN...",
+                            "fuente": "quefondos", "cacheado": false } },
+  "pedido": 1759600000000 }
+```
+
+`navEur` es lo que hay que usar para sumar: el `nav` viene en la divisa del fondo. El tipo de
+cambio sale de `https://api.frankfurter.dev` (datos del BCE, sin clave) y se cachea aparte, en
+`fx:<DIVISA>`.
+
+Máximo 25 ISIN por petición. Se cachea doce horas en KV bajo `vl:<ISIN>`, y además se guarda
+sin caducidad en `vlult:<ISIN>` como último recurso: si un día la fuente no responde, es mejor
+devolver el valor de ayer que un error.
 
 ## Sincronización y modo sin conexión
 

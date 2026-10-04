@@ -7,11 +7,11 @@ import {
   configurarNube, probarNube, marcarTodoPendiente, sincronizar, diagnostico,
   borrar, guardar, enLote, emitir, avisar, eur0, dia,
   abrirHoja, cerrarHoja, confirmar,
-  TEMAS, temaActual, fijarTema,
+  TEMAS, temaActual, fijarTema, cicloDia, nombreCiclo, rangoCiclo,
 } from './nucleo.js';
 import * as fin from './finanzas.js';
 
-const VERSION = 'v20';
+const VERSION = 'v24';
 
 export function pintar(vista) {
   const n = pendientes();
@@ -26,6 +26,8 @@ export function pintar(vista) {
           !nube ? 'sin configurar' : ultimoError ? 'con error' : n ? `${n} sin subir` : 'al día'} ›</small></button>
       <button data-h="presu"><span>Presupuesto</span>
         <small>${resumenPresu()} ›</small></button>
+      <button data-h="ciclo"><span>Mes contable</span>
+        <small>${cicloDia() ? 'empieza el ' + cicloDia() : 'natural'} ›</small></button>
       <button data-h="cats"><span>Categorías</span>
         <small>${fin.cats().length} ›</small></button>
       <button data-h="fijos"><span>Gastos fijos</span>
@@ -48,7 +50,8 @@ export function pintar(vista) {
   vista.querySelector('.scroll').addEventListener('click', e => {
     const b = e.target.closest('[data-h]'); if (!b) return;
     ({ nube: hojaNube, presu: hojaPresupuesto, cats: fin.hojaCategorias,
-       fijos: fin.hojaFijos, tema: hojaTema, datos: hojaDatos, acerca: hojaAcerca })[b.dataset.h](vista);
+       fijos: fin.hojaFijos, ciclo: hojaCiclo, tema: hojaTema,
+       datos: hojaDatos, acerca: hojaAcerca })[b.dataset.h](vista);
   });
   vista.querySelector('#ficheroJSON').onchange = e => importarCopia(e, vista);
 }
@@ -147,6 +150,71 @@ function hojaNube(vista) {
       configurarNube(null); cerrarHoja(); pintar(vista); avisar('Desconectado');
     });
   });
+}
+
+/* ---------- Mes contable ---------- */
+function hojaCiclo(vista) {
+  const pinta = () => {
+    const d = cicloDia();
+    abrirHoja(`
+      <h3>Mes contable</h3>
+      <p>Si cobras a final de mes, tu mes de verdad no empieza el día 1. Aquí
+         eliges en qué día arranca, y Finanzas cuenta los movimientos, el
+         presupuesto y las métricas con ese ciclo.</p>
+
+      <div class="opciones" id="ciModo" style="margin-top:20px">
+        <button data-m="natural" aria-pressed="${!d}">Mes natural</button>
+        <button data-m="propio" aria-pressed="${!!d}">Empieza otro día</button>
+      </div>
+
+      <label class="${d ? '' : 'oculto'}" id="ciCampo">
+        <span>Día en que empieza el mes</span>
+        <input id="ciDia" type="number" inputmode="numeric" min="1" max="31" step="1"
+          value="${d || 28}">
+        <small class="pega" id="ciMal"></small>
+      </label>
+
+      <div class="calTot ${d ? '' : 'oculto'}" id="ciPrueba" style="margin-top:16px">
+        <span>Tu mes en curso</span>
+        <b>${d ? rangoCiclo(0) : ''}</b>
+      </div>
+      <p class="estado ${d ? '' : 'oculto'}">Se llama <b>${
+        d ? nombreCiclo(0).toLowerCase() : ''}</b>, porque es el mes que ocupa casi entero.</p>
+
+      <p class="pieNota">Los hábitos siguen el mes del calendario, y el resumen
+         anual también: cambiarlos reescribiría registros ya guardados.</p>
+
+      <div class="fila"><button id="ciCerrar">Cerrar</button></div>`,
+    caja => {
+      const $ = x => caja.querySelector(x);
+      $('#ciModo').onclick = e => {
+        const b = e.target.closest('[data-m]'); if (!b) return;
+        ajuste('cicloInicio', b.dataset.m === 'natural' ? null : parseInt($('#ciDia').value) || 28);
+        cerrarHoja(); pinta(); pintar(vista); emitir();
+      };
+      /* Se valida al salir del campo, no mientras escribe: con «3» a medio
+         teclear no tiene sentido decirle que 3 está mal. */
+      $('#ciDia')?.addEventListener('blur', e => {
+        const v = parseInt(e.target.value);
+        if (!(v >= 1 && v <= 31)) {
+          e.target.classList.add('mal-dato');
+          $('#ciMal').textContent = 'Pon un día entre 1 y 31.';
+          return;
+        }
+        e.target.classList.remove('mal-dato');
+        $('#ciMal').textContent = '';
+        if (v === cicloDia()) return;        // sin cambios, no se repinta la hoja
+        ajuste('cicloInicio', v);
+        cerrarHoja(); pinta(); pintar(vista); emitir();
+      });
+      $('#ciDia')?.addEventListener('input', e => {
+        e.target.classList.remove('mal-dato');
+        $('#ciMal').textContent = '';
+      });
+      $('#ciCerrar').onclick = cerrarHoja;
+    });
+  };
+  pinta();
 }
 
 /* ---------- Apariencia ---------- */

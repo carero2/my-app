@@ -1,7 +1,7 @@
 /* ==========================================================================
    Pestaña Hoy: lo que necesitas ver y tocar en el día en curso.
    ========================================================================== */
-import { datos, eur, eur0, dia, nombreMes, vacio } from './nucleo.js';
+import { datos, eur, eur0, dia, nombreCiclo, rangoCiclo, vacio } from './nucleo.js';
 import * as fin from './finanzas.js';
 import * as hab from './habitos.js';
 import * as habUI from './habitos-ui.js';
@@ -46,7 +46,8 @@ export function pintar(vista, ir) {
     </button>` : ''}
 
     <div class="panel">
-      <div class="subtitulo" style="padding:0 0 6px">${nombreMes(0)}</div>
+      <div class="subtitulo" style="padding:0 0 6px">${nombreCiclo(0)}${
+        rangoCiclo(0) ? ` · ${rangoCiclo(0)}` : ''}</div>
       <div class="granCifra num">${eur(mes)}</div>
       ${presu ? `<div class="barra" style="margin-top:12px">
           <i class="${mes>presu?'pasado':''}" style="width:${Math.min(mes/presu,1)*100}%"></i></div>

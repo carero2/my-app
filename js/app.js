@@ -1,14 +1,17 @@
 /* ==========================================================================
    Arranque y navegación entre módulos.
    ========================================================================== */
-import { alCambiar, alNavegar, sincronizar, ultimaSync, avisar, aplicarTema } from './nucleo.js';
+import {
+  alCambiar, alNavegar, sincronizar, ultimaSync, avisar, aplicarTema,
+  datos, borrar, enLote,
+} from './nucleo.js';
 import * as hoy from './hoy.js';
 import * as finanzas from './finanzas.js';
 import * as habitos from './habitos-ui.js';
-import * as notas from './notas.js';
+import * as inversion from './inversiones-ui.js';
 import * as ajustes from './ajustes.js';
 
-const MODULOS = { hoy, finanzas, habitos, notas, ajustes };
+const MODULOS = { hoy, finanzas, habitos, inversion, ajustes };
 let actual = 'hoy';
 
 export function ir(nombre) {
@@ -36,6 +39,13 @@ document.getElementById('tabs').onclick = e => {
 alCambiar(() => pintar());
 /* Y cualquier módulo puede pedir que se cambie de pestaña. */
 alNavegar(ir);
+
+/* ---------- Retirada del módulo Notas (v21) ----------
+   Se borran de verdad, con lápida, para que la baja viaje al Worker y no
+   reaparezcan desde otro dispositivo. La colección sigue en COLECCIONES
+   justo para eso. Sin bandera a propósito: si otro dispositivo que no se había
+   actualizado vuelve a subir notas, la siguiente apertura las vuelve a tirar. */
+if (datos.notas.length) enLote(() => [...datos.notas].forEach(n => borrar('notas', n.id)));
 
 /* El tema elegido, antes de pintar nada, para que no haya un fogonazo claro. */
 aplicarTema();

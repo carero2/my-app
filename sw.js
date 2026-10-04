@@ -1,10 +1,10 @@
-const CACHE = 'myapp-v20';
+const CACHE = 'myapp-v24';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './css/estilo.css',
   './js/app.js', './js/nucleo.js', './js/hoy.js',
   './js/finanzas.js', './js/habitos.js', './js/habitos-ui.js',
-  './js/notas.js', './js/ajustes.js',
+  './js/ajustes.js', './js/inversiones.js', './js/inversiones-ui.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
 ];
 

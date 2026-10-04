@@ -3,7 +3,8 @@
    ========================================================================== */
 import {
   datos, anadir, actualizar, borrar, restaurar, ajuste, nube, enLote,
-  eur, eur0, escapar, dia, inicioMes, finMes, nombreMes, navMes,
+  eur, eur0, escapar, dia, navMes,
+  inicioCiclo, finCiclo, nombreCiclo, diasCiclo, cicloDia, rangoCiclo,
   avisar, abrirHoja, cerrarHoja, confirmar, emitir, vacio, irA,
 } from './nucleo.js';
 
@@ -82,7 +83,7 @@ export function idDesde(nombre) {
 /* ---------- Consultas ---------- */
 export const esIngreso = g => g.tipo === 'ingreso';
 export const delMes = off => {
-  const a = inicioMes(off).getTime(), b = finMes(off).getTime();
+  const a = inicioCiclo(off).getTime(), b = finCiclo(off).getTime();
   return datos.gastos.filter(g => g.t >= a && g.t <= b);
 };
 export const gastado = off => delMes(off).filter(g => !esIngreso(g)).reduce((s,g) => s + g.c, 0);
@@ -315,7 +316,7 @@ function pintarAnadir(c) {
 
   c.innerHTML = `
     <div class="cinta">
-      <span>${nombreMes(0)} · <b class="num">${eur(t)}</b></span>
+      <span>${nombreCiclo(0)} · <b class="num">${eur(t)}</b></span>
       <span>${(() => {
         const mal = excedidas().length;
         if (mal) return `<span class="rojo">${mal} categoría${mal===1?'':'s'} pasada${mal===1?'':'s'}</span>`;
@@ -545,7 +546,8 @@ function pintarLista(c) {
   if (!revisando) {
   if (!buscando) navMes(c.querySelector('#nav'), off,
     n => { off = n; pintarLista(c) },
-    datos.gastos.length ? Math.min(...datos.gastos.map(g => g.t)) : Date.now());
+    datos.gastos.length ? Math.min(...datos.gastos.map(g => g.t)) : Date.now(),
+    cicloDia() ? 'ciclo' : 'mes');
 
   c.querySelector('#filtros').innerHTML = presentes.length > 1
     ? `<button class="chip" data-f="" aria-pressed="${!filtro}">Todo</button>` +
@@ -569,7 +571,7 @@ function pintarLista(c) {
           accion: 'Quitar los filtros'
         })
       : vacio({
-          titulo: `Sin movimientos en ${nombreMes(off).toLowerCase()}`,
+          titulo: `Sin movimientos en ${nombreCiclo(off).toLowerCase()}`,
           cuerpo: 'Cuando registres un gasto o un ingreso de este mes aparecerá aquí, '
                 + 'agrupado por día.',
           accion: 'Añadir un movimiento'
@@ -696,13 +698,14 @@ function pintarMes(c) {
   c.innerHTML = `<div class="navmes" id="nav"></div><div id="cuerpo"></div>`;
   navMes(c.querySelector('#nav'), off,
     n => { off = n; pintarMes(c) },
-    datos.gastos.length ? Math.min(...datos.gastos.map(g => g.t)) : Date.now());
+    datos.gastos.length ? Math.min(...datos.gastos.map(g => g.t)) : Date.now(),
+    cicloDia() ? 'ciclo' : 'mes');
 
   const gs = delMes(off);
   const cuerpo = c.querySelector('#cuerpo');
   if (!gs.length) {
     cuerpo.innerHTML = vacio({
-      titulo: `Sin datos en ${nombreMes(off).toLowerCase()}`,
+      titulo: `Sin datos en ${nombreCiclo(off).toLowerCase()}`,
       cuerpo: 'Las métricas del mes necesitan al menos un movimiento. '
             + 'Cambia de mes con las flechas de arriba o registra uno.'
     });
@@ -713,8 +716,12 @@ function pintarMes(c) {
   const prev = gastado(off - 1);
   const delta = prev > 0 ? ((total - prev) / prev) * 100 : null;
   const enCurso = off === 0;
-  const diasMes = finMes(off).getDate();
-  const diasPasados = enCurso ? new Date().getDate() : diasMes;
+  const diasMes = diasCiclo(off);
+  /* Con mes contable, «los días que llevas» se cuentan desde el inicio del
+     ciclo, no desde el 1 del calendario. */
+  const diasPasados = enCurso
+    ? Math.min(diasMes, Math.floor((Date.now() - inicioCiclo(off).getTime()) / 86400000) + 1)
+    : diasMes;
   const media = total / diasPasados;
   /* La proyección se calla los primeros días: con dos o tres datos es ruido.
      Los gastos fijos no se promedian: se suman enteros una sola vez. */
@@ -751,7 +758,7 @@ function pintarMes(c) {
       <div class="granCifra num">${eur(total)}</div>
       <div class="delta">${delta === null ? 'Sin mes anterior con el que comparar'
         : (delta >= 0 ? '▲ ' : '▼ ') + Math.abs(delta).toFixed(0) + '% respecto a ' +
-          nombreMes(off-1).split(' ')[0].toLowerCase()}</div>
+          nombreCiclo(off-1).split(' ')[0].toLowerCase()}</div>
       ${mediaPrev ? `<div class="delta">${total > mediaPrev ? '▲ ' : '▼ '}${
         Math.abs(Math.round(((total - mediaPrev)/mediaPrev)*100))}% respecto a ${
           trimestre.length === 1 ? 'el mes anterior'
@@ -961,7 +968,7 @@ function grafMeses() {
   const serie = [];
   for (let i = 5; i >= 0; i--) {
     const o = off - i;
-    serie.push({ etq: inicioMes(o).toLocaleDateString('es-ES',{month:'short'}).replace('.',''),
+    serie.push({ etq: nombreCiclo(o).split(' ')[0].slice(0,3).toLowerCase(),
                  v: gastado(o), activo: i === 0 });
   }
   const max = Math.max(...serie.map(s => s.v), 1);
