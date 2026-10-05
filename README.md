@@ -526,6 +526,54 @@ dos importes y la diferencia en euros y en porcentaje. Tres decisiones dentro de
 Las dos series no se distinguen solo por el color: lo aportado va con línea discontinua, y su
 clave en la leyenda repite el rayado.
 
+#### De dónde sale «lo que vale» en el pasado
+
+Esta es la parte que hace o deshace la gráfica, y la que más tardó en estar bien. La app sabe al
+céntimo lo que has aportado y cuándo, porque se lo has dicho. Lo que valía tu dinero en el pasado
+no lo sabe: eso solo lo sabe tu banco. Y quien mete sus aportaciones de golpe con el total acaba
+con **una sola valoración**, la de hoy. Un punto no es una línea.
+
+Hay tres piezas:
+
+**Cada día que abras la app se guarda el valor de ese día.** Un apunte por día, y si ya hay uno
+se corrige. Así la curva se construye sola de hoy en adelante sin que nadie teclee nada.
+
+**Se pueden pegar valoraciones pasadas de golpe.** Una línea por valoración, con su fecha y su
+importe, tal cual se copie del banco. El lector se traga `AAAA-MM-DD`, `DD/MM/AAAA`, `DD.MM.AA` y
+`30 sept 2026`; si no hay día, toma el cierre de mes, que es lo que publica un extracto mensual.
+De cada línea quita primero la fecha —si no, «30/09/2026» aporta tres números que no son dinero—
+y del resto coge el último, que es donde los extractos ponen el total. Las líneas que no entiende
+las cuenta y lo dice, en vez de tragárselas en silencio. Con ocho o diez repartidas en dos años ya
+hay curva, y es **real**: son datos del banco, no una estimación.
+
+**Entre dos valoraciones se unen los puntos con una recta.** Arrastrar la última hasta la
+siguiente dejaba una línea plana que pegaba un salto el día que se anotó la siguiente, y eso
+afirma algo que no ocurrió: que la cartera estuvo meses quieta y se movió en un solo día.
+Interpolar no sabe más, pero tampoco afirma de más. Antes de la primera valoración se devuelve
+*nada*, no cero: no saber cuánto valía no es lo mismo que no valer nada.
+
+Y cuando no hay con qué dibujar —una valoración o ninguna— **no se dibuja**. Sale un estado vacío
+que explica por qué y lleva directo a arreglarlo. Una gráfica con una sola línea no dice nada que
+no diga ya la cifra de arriba.
+
+##### Lo que se descartó: reconstruir el pasado con precios históricos
+
+La alternativa era calcular lo que valía la cartera en cada aportación a partir del histórico de
+valores liquidativos: participaciones compradas en cada fecha, acumuladas, por el precio de cada
+día. Se descartó por dos razones, no por una:
+
+- **La fuente no es fiable.** Las APIs gratuitas excluyen los fondos europeos. El histórico de
+  quefondos existe, pero detrás de un formulario POST alojado en subdominios distintos por banco,
+  sin cobertura garantizada para un ISIN cualquiera.
+- **Y aunque lo fuera, para una cartera gestionada sería un modelo, no un dato.** El dinero se
+  reparte entre fondos con pesos que la app no conoce y el gestor rebalancea por el camino. Lo
+  mejor alcanzable sería una cesta de pesos constantes: defendible como estimación, pero una
+  estimación al fin y al cabo, y sin forma de acotar su error.
+
+Entre un modelo que no se puede verificar y diez líneas copiadas del banco que son exactas, gana
+lo segundo. Si algún día hay una fuente de histórico que se pueda comprobar de verdad, esto se
+reabre.
+
 El detalle de un producto repite el mismo esqueleto una capa más abajo, más sus movimientos y
 su ficha. Repetir el patrón es lo que hace que una app con cuentas se sienta sencilla.
 

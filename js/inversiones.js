@@ -336,6 +336,27 @@ export const inicioPeriodo = (periodo, primera) => {
   return Math.max(primera, Date.now() - p.dias * DIA);
 };
 
+/* ---------- Cuánto valía en un instante cualquiera ----------
+   Entre dos valoraciones nadie sabe qué pasó. Arrastrar la última hasta la
+   siguiente deja una línea plana que pega un salto el día que se anotó, y eso
+   afirma algo que no ocurrió: que la cartera estuvo meses quieta y se movió en
+   un día. Unir los dos puntos conocidos con una recta no sabe más que eso, pero
+   tampoco afirma de más.
+
+   Antes de la primera valoración se devuelve null, no cero: no saber cuánto
+   valía no es lo mismo que valer nada, y pintar ese cero hundiría la línea. */
+export function valorEn(vals, ms) {
+  if (!vals.length || ms < vals[0].t) return null;
+  const ult = vals[vals.length - 1];
+  if (ms >= ult.t) return ult.c;
+  let j = 1;
+  while (j < vals.length && vals[j].t <= ms) j++;
+  const a = vals[j - 1], b = vals[j];
+  const tramo = b.t - a.t;
+  if (tramo <= 0) return b.c;
+  return a.c + (b.c - a.c) * ((ms - a.t) / tramo);
+}
+
 export function serie(invId, periodo = 'todo') {
   const c = producto(invId); if (!c) return [];
   const ap = aportes(invId);
@@ -343,12 +364,12 @@ export function serie(invId, periodo = 'todo') {
   const vals = valoraciones(invId);
   const cs = cortes(inicioPeriodo(periodo, ap[0].t));
 
-  /* Los apuntes vienen ordenados, así que se recorren una vez en paralelo con
-     los cortes en vez de filtrar la lista entera en cada punto. */
-  let i = 0, j = 0, puesto = 0, vale = null;
+  /* Las aportaciones vienen ordenadas, así que se recorren una vez en paralelo
+     con los cortes en vez de filtrar la lista entera en cada punto. */
+  let i = 0, puesto = 0;
   const puntos = cs.map(k => {
     while (i < ap.length && ap[i].t <= k.ms) puesto += ap[i++].c || 0;
-    while (j < vals.length && vals[j].t <= k.ms) vale = vals[j++].c;
+    const vale = valorEn(vals, k.ms);
     return { ms: k.ms, etq: k.etq,
       puesto: Math.round(puesto * 100) / 100,
       vale: vale === null ? null : Math.round(vale * 100) / 100 };
@@ -485,7 +506,7 @@ export function serieGlobal(periodo = 'todo') {
   const ps = productos();
   if (!ps.length) return [];
   const vivos = ps.map(p => ({ p, ap: aportes(p.id), vals: valoraciones(p.id),
-    i: 0, j: 0, puesto: 0, vale: null, hoy: valorActual(p.id) }))
+    i: 0, puesto: 0, hoy: valorActual(p.id) }))
     .filter(x => x.ap.length);
   if (!vivos.length) return [];
 
@@ -497,11 +518,10 @@ export function serieGlobal(periodo = 'todo') {
     let puesto = 0, vale = 0, hayValor = false;
     for (const e of vivos) {
       while (e.i < e.ap.length && e.ap[e.i].t <= k.ms) e.puesto += e.ap[e.i++].c || 0;
-      while (e.j < e.vals.length && e.vals[e.j].t <= k.ms) e.vale = e.vals[e.j++].c;
       puesto += e.puesto;
       /* En el último punto manda el valor de hoy, que en modo automático sale
          de las posiciones y no de la lista de valoraciones. */
-      const v = ultimo && e.hoy !== null ? e.hoy : e.vale;
+      const v = ultimo && e.hoy !== null ? e.hoy : valorEn(e.vals, k.ms);
       if (v !== null) { vale += v; hayValor = true }
     }
     return { ms: k.ms, etq: k.etq, puesto: Math.round(puesto * 100) / 100,
@@ -794,6 +814,79 @@ export function numeroSuelto(txt) {
   else                   limpio = t;
   const n = parseFloat(limpio);
   return isFinite(n) ? n : null;
+}
+
+/* ---------- Valoraciones pasadas pegadas de golpe ----------
+   Reconstruir el pasado a partir de precios históricos es un modelo; copiar lo
+   que el banco ya enseña es un dato. Diez líneas pegadas valen más que
+   cualquier estimación, así que el trabajo está en tragarse los formatos de
+   fecha e importe que use cada banco sin pedirle a nadie que los normalice.
+
+   De cada línea se saca una fecha y un importe. La fecha se quita del texto
+   antes de buscar el número, porque si no «30/09/2026» aporta tres números que
+   no son dinero. Del resto se coge el último, que es donde los extractos ponen
+   el total: delante suele haber participaciones o un valor liquidativo. */
+const MESES_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun',
+                  'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** Devuelve [fechaMs, textoSinLaFecha] o null si en la línea no hay fecha. */
+function fechaDeLinea(linea) {
+  const corta = (a, m, d) => {
+    const f = new Date(a, m, d, 12);
+    return (f.getFullYear() === a && f.getMonth() === m && f.getDate() === d) ? f.getTime() : null;
+  };
+  /* AAAA-MM-DD, el formato sin ambigüedad: se prueba primero. */
+  let m = /(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(linea);
+  if (m) {
+    const t = corta(+m[1], +m[2] - 1, +m[3]);
+    if (t !== null) return [t, linea.replace(m[0], ' ')];
+  }
+  /* DD/MM/AAAA y DD/MM/AA. En España el día va delante, siempre. */
+  m = /(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/.exec(linea);
+  if (m) {
+    const a = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+    const t = corta(a, +m[2] - 1, +m[1]);
+    if (t !== null) return [t, linea.replace(m[0], ' ')];
+  }
+  /* «30 sept 2026» y «sept 2026»: lo que sale al copiar de una web. */
+  m = new RegExp(`(?:(\\d{1,2})\\s+)?(${MESES_ES.join('|')})[a-z]*\\.?\\s+(\\d{4})`, 'i').exec(linea);
+  if (m) {
+    const mes = MESES_ES.indexOf(m[2].toLowerCase().slice(0, 3));
+    /* Sin día se toma el último del mes: es el cierre, que es lo que publica
+       un extracto mensual. */
+    const dia1 = m[1] ? +m[1] : new Date(+m[3], mes + 1, 0).getDate();
+    const t = corta(+m[3], mes, dia1);
+    if (t !== null) return [t, linea.replace(m[0], ' ')];
+  }
+  return null;
+}
+
+/**
+ * Lee un pegote de «fecha  importe» por línea.
+ * Devuelve { valores: [{t, c}] ordenados, ignoradas: n, futuras: n }.
+ */
+export function leerValores(texto, hasta = Date.now()) {
+  const lineas = String(texto || '').replace(/ /g, ' ').split(/[\r\n]+/);
+  const porDia = new Map();          // un apunte por día: el último gana
+  let ignoradas = 0, futuras = 0;
+
+  for (const bruta of lineas) {
+    const linea = bruta.trim();
+    if (!linea) continue;
+    const f = fechaDeLinea(linea);
+    if (!f) { ignoradas++; continue }
+    const [t, resto] = f;
+    const nums = resto.match(/-?\d[\d.,]*/g);
+    if (!nums) { ignoradas++; continue }
+    const c = numeroSuelto(nums[nums.length - 1]);
+    if (c === null || !isFinite(c) || c < 0) { ignoradas++; continue }
+    /* Una valoración futura no existe: o es una errata o es una proyección, y
+       ninguna de las dos debe entrar en el histórico como si fuera un hecho. */
+    if (t > hasta) { futuras++; continue }
+    porDia.set(dia(t), { t, c: Math.round(c * 100) / 100 });
+  }
+  const valores = [...porDia.values()].sort((a, b) => a.t - b.t);
+  return { valores, ignoradas, futuras };
 }
 
 /** Lee un pegote de texto y devuelve lo que ha reconocido, sin tocar nada. */

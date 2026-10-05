@@ -25,7 +25,7 @@ import {
   aportes, valoraciones, posicionesDe, invertido,
   vlDe, navEurDe, refrescarPrecios, valorPorPosiciones, anotarValor,
   valorActual, ultimoValor, fechaValor, rentabilidad, serie, reparto, desfase,
-  crearProducto, borrarProducto, seriePeriodica, leerPosiciones,
+  crearProducto, borrarProducto, seriePeriodica, leerPosiciones, leerValores,
   resumenGlobal, rentabilidadGlobal, serieGlobal, PERIODOS_INV,
   ESCENARIOS, simular, costeDeEsperar, analisis, comisionDe, vlPedido,
 } from './inversiones.js';
@@ -166,6 +166,10 @@ function pintarResumen(c, vista) {
     const f = e.target.closest('[data-prod]'); if (!f) return;
     sel = f.dataset.prod; pintar(vista);
   };
+  /* En el agregado no hay un producto al que anotarle el valor: las
+     valoraciones son de cada uno, así que el botón lleva a elegir cuál. */
+  c.querySelector('[data-vacio="productos"]')?.addEventListener('click', () =>
+    c.querySelector('#invLista')?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
   enchufarGrafica(c, serieGlobal, 'var(--acento)');
 }
 
@@ -261,7 +265,10 @@ function pintarDetalle(c, vista) {
 
     <div class="acciones" style="margin-top:18px">
       <button class="accion" id="invAporte">Añadir aportación</button>
-      ${modo === 'manual' ? '<button class="accion" id="invValor">Anotar valor</button>' : ''}
+      <!-- También en modo automático: ahí los precios dan el valor de hoy, pero
+           el del año pasado no lo sabe nadie más que el banco. Sin este botón no
+           había forma de rellenar el pasado y la gráfica se quedaba en un punto. -->
+      <button class="accion" id="invValor">Anotar valor</button>
       ${modo === 'auto' ? `<button class="accion" id="invPrecios" ${cargando ? 'disabled' : ''}>${
         cargando ? 'Buscando…' : 'Actualizar precios'}</button>` : ''}
       <button class="accion nuevo" id="invCfg">Ajustes</button>
@@ -276,6 +283,7 @@ function pintarDetalle(c, vista) {
   $('#invPos')?.addEventListener('click', () => hojaPosicion(null, vista));
   $('#invImport')?.addEventListener('click', () => hojaImportar(vista));
   c.querySelectorAll('[data-vacio]').forEach(b => {
+    if (b.dataset.vacio === 'valores') { b.onclick = () => hojaValorManual(vista); return }
     const deFondos = /pegar|tabla/i.test(b.textContent);
     b.onclick = () => deFondos ? hojaImportar(vista) : hojaAporte(null, vista);
   });
@@ -452,10 +460,25 @@ function graficaInterior(dame, color) {
   const botones = PERIODOS_INV.map(p =>
     `<button data-gp="${p.id}" aria-pressed="${p.id === periodoGraf}"
        aria-label="${p.largo}" title="${p.largo}">${p.nom}</button>`).join('');
-  const cuerpo = pts.length > 1
+  /* Con una sola valoración la línea del valor es un punto suelto, y una
+     gráfica con una sola línea —la de lo aportado— no dice nada que no diga ya
+     la cifra de arriba. Más vale admitirlo y decir qué lo arregla. */
+  const conValor = pts.filter(x => x.vale !== null).length;
+  const cuerpo = pts.length > 1 && conValor > 1
     ? grafica(pts, color)
-    : `<p class="estado">En este periodo no hay suficiente historia para dibujar la
-         línea. Prueba con uno más largo.</p>`;
+    : pts.length <= 1
+      ? `<p class="estado">En este periodo no hay suficiente historia para dibujar la
+           línea. Prueba con uno más largo.</p>`
+      : vacio({
+          titulo: conValor ? 'Solo hay una valoración' : 'Todavía no hay valoraciones',
+          cuerpo: `La app sabe lo que has aportado y cuándo, pero lo que valía tu
+            dinero en el pasado solo lo sabe tu banco. Cada día que abras la app se
+            guarda el valor de ese día, así que la curva se irá formando sola de hoy
+            en adelante. Para no esperar, copia del banco unas cuantas valoraciones
+            pasadas: con ocho o diez repartidas ya hay curva, y es real.`,
+          accion: sel ? 'Anotar valores pasados' : 'Elegir un producto',
+          id: sel ? 'valores' : 'productos',
+        });
   return `<div class="rotulo" style="padding-top:0">Aportado y valor</div>
     <div class="opciones periodos" id="grafPer" style="margin:0 0 14px">${botones}</div>
     ${cuerpo}`;
@@ -828,19 +851,73 @@ async function quitarAporte(id, vista) {
 
 function hojaValorManual(vista) {
   const ultimo = ultimoValor(sel);
+  let varios = false;
   abrirHoja(`<h3>Anotar valor</h3>
-    <p>Pon lo que dice tu banco hoy. Cada día guarda un solo apunte: si ya has
-       anotado hoy, este lo corrige.</p>
-    <label><span>Valor total de la cartera</span>
-      <input id="vmC" type="number" inputmode="decimal" step="any" min="0"
-        value="${ultimo ?? ''}" placeholder="0" autofocus>
-      <small class="pega" id="vmMal"></small></label>
-    <label><span>Fecha</span>
-      <input id="vmT" type="date" max="${dia()}" value="${dia()}"></label>
+    <div class="opciones" id="vmModo" style="margin:4px 0 14px">
+      <button data-v="0" aria-pressed="true">Uno</button>
+      <button data-v="1" aria-pressed="false">Varios de golpe</button>
+    </div>
+
+    <div id="vmUno">
+      <p>Pon lo que dice tu banco. Cada día guarda un solo apunte: si ya has
+         anotado ese día, este lo corrige.</p>
+      <label><span>Valor total de la cartera</span>
+        <input id="vmC" type="number" inputmode="decimal" step="any" min="0"
+          value="${ultimo ?? ''}" placeholder="0" autofocus>
+        <small class="pega" id="vmMal"></small></label>
+      <label><span>Fecha</span>
+        <input id="vmT" type="date" max="${dia()}" value="${dia()}"></label>
+    </div>
+
+    <div id="vmVarios" class="oculto">
+      <p>Una línea por valoración: la fecha y lo que valía ese día. Sirve tal
+         cual lo que copies de tu banco; el orden da igual y las líneas que no
+         se entiendan se quedan fuera.</p>
+      <label for="vmTxt"><span>Fecha e importe por línea</span>
+        <textarea id="vmTxt" rows="7" spellcheck="false"
+          placeholder="31/12/2025   7.260,00 €&#10;31/03/2026   7.880,30 €&#10;30/06/2026   8.315,90 €"></textarea></label>
+      <div id="vmPrevia"></div>
+    </div>
+
     <div class="fila"><button id="vmNo">Cancelar</button>
       <button class="ok" id="vmOk">Guardar</button></div>`,
   caja => {
     const $ = s => caja.querySelector(s);
+
+    const previa = () => {
+      const { valores, ignoradas, futuras } = leerValores($('#vmTxt').value);
+      const avisos = [];
+      if (ignoradas) avisos.push(`${ignoradas} línea${ignoradas === 1 ? '' : 's'} sin
+        fecha o sin importe que se quedan fuera`);
+      if (futuras) avisos.push(`${futuras} con fecha futura, que no se guardan`);
+      $('#vmPrevia').innerHTML = valores.length
+        ? `<div class="calTot" style="margin-top:16px">
+             <span>${valores.length} valoracion${valores.length === 1 ? '' : 'es'}, de ${
+               escapar(new Date(valores[0].t).toLocaleDateString('es-ES',
+                 { month: 'short', year: 'numeric' }).replace('.', ''))} a ${
+               escapar(new Date(valores[valores.length - 1].t).toLocaleDateString('es-ES',
+                 { month: 'short', year: 'numeric' }).replace('.', ''))}</span>
+             <b class="num">${eur(valores[valores.length - 1].c)}</b></div>
+           ${avisos.length ? `<p class="estado">${avisos.join(' · ')}.</p>` : ''}`
+        : `<p class="estado">${$('#vmTxt').value.trim()
+             ? 'De ahí no sale ninguna fecha con su importe. Cada línea necesita las dos cosas.'
+             : 'Pega aquí las valoraciones y te digo cuántas he entendido.'}</p>`;
+      $('#vmOk').textContent = varios && valores.length
+        ? `Guardar ${valores.length}` : 'Guardar';
+    };
+
+    $('#vmModo').addEventListener('click', e => {
+      const b = e.target.closest('[data-v]'); if (!b) return;
+      varios = b.dataset.v === '1';
+      caja.querySelectorAll('#vmModo button').forEach(x =>
+        x.setAttribute('aria-pressed', (x.dataset.v === '1') === varios));
+      $('#vmUno').classList.toggle('oculto', varios);
+      $('#vmVarios').classList.toggle('oculto', !varios);
+      previa();
+      if (varios) $('#vmTxt').focus();
+    });
+    $('#vmTxt').addEventListener('input', previa);
+
     $('#vmC').addEventListener('blur', e => {
       const v = parseFloat(e.target.value);
       const mal = e.target.value !== '' && (!isFinite(v) || v < 0);
@@ -852,6 +929,14 @@ function hojaValorManual(vista) {
     });
     $('#vmNo').onclick = cerrarHoja;
     $('#vmOk').onclick = () => {
+      if (varios) {
+        const { valores } = leerValores($('#vmTxt').value);
+        if (!valores.length) return $('#vmTxt').focus();
+        for (const v of valores) anotarValor(sel, v.c, v.t);
+        cerrarHoja(); emitir(); pintar(vista);
+        return avisar(`${valores.length} valoracion${
+          valores.length === 1 ? ' anotada' : 'es anotadas'}`);
+      }
       const v = parseFloat($('#vmC').value);
       if (!isFinite(v) || v < 0) {
         $('#vmC').classList.add('mal-dato');

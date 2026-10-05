@@ -568,10 +568,14 @@ export function confirmar({ titulo, cuerpo = '', si = 'Borrar', no = 'Cancelar' 
 /* ---------- Estado vacío ---------- */
 /** Tres piezas obligatorias: qué falta, por qué está vacío y el botón que lo llena.
  *  El botón lleva [data-vacio] para que quien lo pinta le enganche el click. */
-export function vacio({ titulo, cuerpo = '', accion = '' }) {
+/* El «id» sirve para enrutar el botón cuando en una misma pantalla hay más de
+   un estado vacío y cada uno lleva a un sitio distinto. Sin él, el único modo
+   de distinguirlos era mirarles el texto, que se rompe al reescribir la copia. */
+export function vacio({ titulo, cuerpo = '', accion = '', id = '' }) {
   return `<div class="vacio"><b>${escapar(titulo)}</b>
     ${cuerpo ? `<p>${escapar(cuerpo)}</p>` : ''}
-    ${accion ? `<button type="button" data-vacio>${escapar(accion)}</button>` : ''}</div>`;
+    ${accion ? `<button type="button" data-vacio="${escapar(id)}">${
+      escapar(accion)}</button>` : ''}</div>`;
 }
 
 /* ---------- Navegación por mes (o por año), reutilizada por varios módulos ---------- */
