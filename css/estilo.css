@@ -278,6 +278,53 @@ svg.graf{width:100%;height:110px;overflow:visible;margin-top:var(--e3);display:b
    375px una etiqueta por columna sale recortada y no se lee ninguna. */
 .ejeX{display:flex;justify-content:space-between;padding:var(--e2) 0 0;
   font-size:var(--t-meta);color:var(--muted)}
+
+/* ---------- Gráfica de inversión: eje Y, banda y barra móvil ----------
+   El eje Y va fuera del SVG. Dentro se deformaría: el lienzo es 0-100 estirado
+   a lo ancho y a lo alto por separado, que es justo lo que hace que las líneas
+   encajen sin calcular píxeles, y lo que destrozaría cualquier texto. */
+.grafZona{position:relative;padding-left:62px;margin-top:var(--e3)}
+.grafZona svg.graf{margin-top:0}
+.ejeY{position:absolute;left:0;top:0;width:56px;height:110px;
+  font-size:var(--t-meta);color:var(--muted);text-align:right}
+/* 4% y 96% son los mismos topes que usa el dibujo, para que el número de arriba
+   caiga en la línea de arriba y no un pelo por encima. */
+.ejeY span{position:absolute;right:0;transform:translateY(-50%);white-space:nowrap}
+.ejeY span:nth-child(1){top:4%}
+.ejeY span:nth-child(2){top:50%}
+.ejeY span:nth-child(3){top:96%}
+
+.grafCaja{position:relative;touch-action:pan-y;cursor:ew-resize}
+.grafCaja:focus-visible{outline:2px solid var(--acento);outline-offset:4px;border-radius:var(--r1)}
+/* Sin transición a propósito: la barra sigue al dedo, y animarla la retrasa. */
+.grafBarra{position:absolute;top:0;height:110px;width:1px;background:var(--ink);
+  opacity:.45;pointer-events:none}
+.grafPunto{position:absolute;left:50%;width:9px;height:9px;border-radius:50%;
+  transform:translate(-50%,-50%);border:2px solid var(--card);box-sizing:content-box}
+
+/* La lectura ocupa sitio siempre, con barra o sin ella: si apareciera al
+   arrastrar, el panel crecería y empujaría media pantalla hacia abajo. Va
+   debajo de la gráfica y hace también de leyenda —cada fila lleva su clave de
+   color—, así que no hace falta una leyenda aparte repitiendo los nombres. */
+.grafLee{border-top:1px solid var(--line);margin-top:var(--e4);padding-top:var(--e3)}
+.grafFecha{font-size:var(--t-meta);color:var(--muted);margin-bottom:var(--e2)}
+.grafFila{display:flex;align-items:center;justify-content:space-between;gap:var(--e3);
+  font-size:var(--t-aux);color:var(--muted);min-height:24px}
+.grafFila b{color:var(--ink);font-weight:600;white-space:nowrap}
+/* Sólo el hijo directo: con «.grafFila span» los .num de dentro de la cifra
+   también se volvían flex y la diferencia se partía en tres líneas. */
+.grafFila > span{display:flex;align-items:center;gap:var(--e2);min-width:0}
+.grafFila i{width:14px;height:14px;border-radius:4px;display:block;flex:none;
+  border:1px solid var(--line);box-sizing:border-box}
+.grafFila i.lleno{border-color:transparent}
+.grafFila.dif{border-top:1px solid var(--line);margin-top:var(--e2);padding-top:var(--e2)}
+.grafFila.dif b{color:var(--ingreso)}
+.grafFila.dif.rojo b{color:var(--alerta)}
+/* La clave de «lo aportado» repite el rayado de su línea: dos series no se
+   pueden distinguir solo por el color. Lleva !important porque hereda de dos
+   sitios (.calPie i y .grafFila i) que le ponen alto y borde de cuadradito. */
+.calPie i.rayada,.grafFila i.rayada{width:14px;height:0!important;flex:none;
+  border:0;border-top:2px dashed var(--muted)!important;border-radius:0;background:none}
 .rotulo{font-size:var(--t-aux);font-weight:600;color:var(--ink);margin-top:var(--e6)}
 .rotulo + .panel,.rotulo + .grupo,.rotulo + ul.filas{margin-top:var(--e2)}
 .panel > .rotulo:first-child{margin-top:0}

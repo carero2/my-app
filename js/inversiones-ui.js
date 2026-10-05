@@ -16,7 +16,7 @@
    ========================================================================== */
 import {
   datos, anadir, actualizar, borrar, enLote, nube,
-  eur, eur0, dia, desdeDia, escapar, avisar, emitir, vacio,
+  eur, eur0, pc, dia, desdeDia, escapar, avisar, emitir, vacio,
   abrirHoja, cerrarHoja, confirmar,
 } from './nucleo.js';
 import {
@@ -38,6 +38,10 @@ let cargando = false;       // hay una petición de precios en vuelo
    mirando el último año del agregado quiere el último año al abrir un producto,
    no volver a elegirlo. Por defecto, toda la historia. */
 let periodoGraf = 'todo';
+/* Estado de la barra móvil. El índice es null hasta que hay puntos; entonces se
+   coloca en el último, que es hoy: así la lectura nunca está vacía y el panel no
+   cambia de alto al arrastrar, que movería la página entera bajo el dedo. */
+let grafIdx = null, grafPts = [], grafColor = 'var(--acento)', grafEscala = { min: 0, rango: 1 };
 
 /* Lo último que se simuló, para no perderlo al cambiar de pestaña. */
 let sim = { inicial: 0, mensual: 200, anios: 20, pct: 6, inflacion: 0, subida: 0 };
@@ -120,7 +124,7 @@ function pintarResumen(c, vista) {
       ${g.plus !== null ? `<div class="delta">${g.plus >= 0 ? '▲ ' : '▼ '}<span class="num">${
         eur(Math.abs(g.plus))}</span> sobre los <span class="num">${eur(g.puesto)}</span>
         que has puesto</div>` : ''}
-      ${tirG !== null ? `<div class="delta"><b class="num">${tirG > 0 ? '+' : ''}${tirG}%</b>
+      ${tirG !== null ? `<div class="delta"><b class="num">${tirG > 0 ? '+' : ''}${pc(tirG)}</b>
         anual · TIR</div>
         <p class="estado">${LINEA_TIR}</p>` : ''}
       ${g.sinValor.length ? `<p class="estado rojo">${g.sinValor.length === 1
@@ -214,7 +218,7 @@ function pintarDetalle(c, vista) {
       ${plus !== null ? `<div class="delta">${plus >= 0 ? '▲ ' : '▼ '}<span class="num">${
         eur(Math.abs(plus))}</span> sobre los <span class="num">${eur(puesto)}</span>
         que has puesto</div>` : ''}
-      ${tirP !== null ? `<div class="delta"><b class="num">${tirP > 0 ? '+' : ''}${tirP}%</b>
+      ${tirP !== null ? `<div class="delta"><b class="num">${tirP > 0 ? '+' : ''}${pc(tirP)}</b>
         anual · TIR</div><p class="estado">${LINEA_TIR}</p>` : ''}
       ${valor === null ? `<div class="delta">Sin valor todavía. ${
         modo === 'auto' ? 'Añade tus posiciones y actualiza los precios.'
@@ -449,13 +453,7 @@ function graficaInterior(dame, color) {
     `<button data-gp="${p.id}" aria-pressed="${p.id === periodoGraf}"
        aria-label="${p.largo}" title="${p.largo}">${p.nom}</button>`).join('');
   const cuerpo = pts.length > 1
-    ? `${grafica(pts, color)}
-       <div class="calPie">
-         <span><i class="lleno" style="background:${color}"></i>Lo que vale</span>
-         <span><i style="background:var(--hueco);border-color:transparent"></i>Lo que has puesto</span>
-       </div>
-       ${rangoDe(pts).cero ? '' : `<p class="estado">La escala no empieza en cero,
-         para que se vea el movimiento.</p>`}`
+    ? grafica(pts, color)
     : `<p class="estado">En este periodo no hay suficiente historia para dibujar la
          línea. Prueba con uno más largo.</p>`;
   return `<div class="rotulo" style="padding-top:0">Aportado y valor</div>
@@ -470,8 +468,11 @@ function enchufarGrafica(c, dame, color) {
   panel.addEventListener('click', e => {
     const b = e.target.closest('[data-gp]'); if (!b) return;
     periodoGraf = b.dataset.gp;
+    grafIdx = null;                       // otro periodo, otra barra
     panel.innerHTML = graficaInterior(dame, color);
+    enchufarBarra(panel);
   });
+  enchufarBarra(panel);
 }
 
 /* ---------- Gráfica de dos líneas ----------
@@ -490,27 +491,176 @@ function rangoDe(pts) {
   return { min, max, cero: min <= 0 };
 }
 
+/* Posición vertical de un importe dentro del lienzo de 100×100. El dibujo vive
+   entre el 4% y el 96% para que una línea en el máximo no se coma el borde. */
+const yDe = (v, min, rango) => 100 - ((v - min) / rango) * 92 - 4;
+
+let nGraf = 0;   // para que los clip-path de dos gráficas no choquen
+
 function grafica(pts, color) {
-  const { min, max } = rangoDe(pts);
+  const { min, max, cero } = rangoDe(pts);
   const rango = (max - min) || Math.max(1, Math.abs(max) * 0.02);
   const x = i => (i / Math.max(1, pts.length - 1)) * 100;
-  const y = v => 100 - ((v - min) / rango) * 92 - 4;
+  const y = v => yDe(v, min, rango);
+
+  /* Estado que necesita la barra móvil para no recalcular nada al arrastrar. */
+  grafPts = pts; grafColor = color; grafEscala = { min, rango };
+  if (grafIdx === null || grafIdx > pts.length - 1) grafIdx = pts.length - 1;
 
   const linea = campo => pts.map((p, i) => p[campo] === null ? null : `${x(i)},${y(p[campo])}`)
     .filter(Boolean).join(' ');
-  const areaPuesto = `0,100 ${linea('puesto')} 100,100`;
 
-  return `<svg class="graf" viewBox="0 0 100 100" preserveAspectRatio="none"
-      role="img" aria-label="Evolución de lo aportado y del valor">
-    <polygon points="${areaPuesto}" fill="var(--hueco)"></polygon>
-    <polyline points="${linea('puesto')}" fill="none" stroke="var(--muted)" stroke-width="1.5"
-      vector-effect="non-scaling-stroke" stroke-linejoin="round"></polyline>
-    <polyline points="${linea('vale')}" fill="none" stroke="${color}" stroke-width="2.5"
-      vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></polyline>
-  </svg>
-  <div class="ejeX">${[0, Math.floor(pts.length / 3), Math.floor(2 * pts.length / 3),
-    pts.length - 1].filter((v, i, a) => a.indexOf(v) === i)
-    .map(i => `<span>${escapar(pts[i].etq)}</span>`).join('')}</div>`;
+  /* ---- La banda entre las dos líneas ----
+     Antes se rellenaba desde la línea de aportado hasta abajo, y eso dejaba la
+     plusvalía como una rendija encima de un bloque enorme: justo el dato que
+     se quiere ver era el único sin tinta. Ahora se pinta lo que hay *entre* las
+     dos líneas, que es la plusvalía, y se parte en verde y rojo con dos
+     recortes: uno por encima de la línea de aportado y otro por debajo. Así,
+     cuando el valor cruza y se pone en pérdidas, cada tramo lleva su color sin
+     tener que calcular dónde se cortan exactamente. */
+  const i0 = pts.findIndex(p => p.vale !== null);
+  let banda = '';
+  if (i0 !== -1 && i0 < pts.length - 1) {
+    const id = ++nGraf;
+    const porVale = [], porPuesto = [];
+    for (let i = i0; i < pts.length; i++) {
+      if (pts[i].vale !== null) porVale.push(`${x(i)},${y(pts[i].vale)}`);
+      porPuesto.push(`${x(i)},${y(pts[i].puesto)}`);
+    }
+    const franja = [...porVale, ...porPuesto.slice().reverse()].join(' ');
+    const linPuesto = porPuesto.join(' ');
+    const xIni = x(i0), xFin = x(pts.length - 1);
+    banda = `<defs>
+        <clipPath id="gArr${id}"><polygon points="${xIni},-5 ${linPuesto} ${xFin},-5"/></clipPath>
+        <clipPath id="gAba${id}"><polygon points="${xIni},105 ${linPuesto} ${xFin},105"/></clipPath>
+      </defs>
+      <polygon points="${franja}" fill="var(--ingreso)" fill-opacity=".20"
+        clip-path="url(#gArr${id})"></polygon>
+      <polygon points="${franja}" fill="var(--alerta)" fill-opacity=".20"
+        clip-path="url(#gAba${id})"></polygon>`;
+  }
+
+  /* Rejilla: tres hairlines del mismo tono que los bordes, nunca discontinuas. */
+  const rejilla = [4, 50, 96].map(p =>
+    `<line x1="0" y1="${p}" x2="100" y2="${p}" stroke="var(--line)" stroke-width="1"
+       vector-effect="non-scaling-stroke"></line>`).join('');
+
+  const marcas = [0, Math.floor(pts.length / 3), Math.floor(2 * pts.length / 3),
+    pts.length - 1].filter((v, i, a) => a.indexOf(v) === i);
+
+  return `<div class="grafZona">
+      <div class="ejeY" aria-hidden="true">
+        <span class="num">${eur0(max)}</span>
+        <span class="num">${eur0((max + min) / 2)}</span>
+        <span class="num">${eur0(min)}</span>
+      </div>
+      <div class="grafCaja" id="grafCaja" tabindex="0" role="slider"
+          aria-label="Recorrer la gráfica por fechas" aria-valuemin="0"
+          aria-valuemax="${pts.length - 1}" aria-valuenow="${grafIdx}"
+          aria-valuetext="${escapar(textoPunto(pts[grafIdx]))}">
+        <svg class="graf" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          ${rejilla}
+          ${banda}
+          <polyline points="${linea('puesto')}" fill="none" stroke="var(--muted)"
+            stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"
+            stroke-dasharray="4 3"></polyline>
+          <polyline points="${linea('vale')}" fill="none" stroke="${color}" stroke-width="2.5"
+            vector-effect="non-scaling-stroke" stroke-linejoin="round"
+            stroke-linecap="round"></polyline>
+        </svg>
+        ${marcaBarra(pts, grafIdx, color, min, rango)}
+      </div>
+      <div class="ejeX">${marcas.map(i => `<span>${escapar(pts[i].etq)}</span>`).join('')}</div>
+    </div>
+    <div class="grafLee" id="grafLee">${lectura(pts, grafIdx, color)}</div>
+    ${cero ? '' : `<p class="estado">La escala no empieza en cero, para que se vea
+      el movimiento.</p>`}`;
+}
+
+/** La barra vertical y los dos puntos, en coordenadas de porcentaje de la caja. */
+function marcaBarra(pts, i, color, min, rango) {
+  const p = pts[i];
+  const x = (i / Math.max(1, pts.length - 1)) * 100;
+  const punto = (v, col) => v === null ? ''
+    : `<i class="grafPunto" style="top:${yDe(v, min, rango)}%;background:${col}"></i>`;
+  /* El punto del valor se dibuja el último para que quede encima cuando las dos
+     líneas se juntan: es la serie principal, no la referencia. */
+  return `<div class="grafBarra" id="grafBarra" style="left:${x}%">
+    ${punto(p.puesto, 'var(--muted)')}${punto(p.vale, color)}
+  </div>`;
+}
+
+/** Lo que se lee al mover la barra. Los importes van en .num porque el modo
+ *  discreto tiene que taparlos igual que a los de las demás pantallas. */
+function lectura(pts, i, color) {
+  const p = pts[i];
+  const fecha = new Date(p.ms).toLocaleDateString('es-ES',
+    { day: 'numeric', month: 'short', year: 'numeric' }).replace(/\./g, '');
+  const dif = p.vale === null ? null : Math.round((p.vale - p.puesto) * 100) / 100;
+  const pct = dif === null || !p.puesto ? null : (dif / p.puesto) * 100;
+  return `<div class="grafFecha">${escapar(fecha)}</div>
+    <div class="grafFila"><span><i class="lleno" style="background:${color}"></i>Lo que vale</span>
+      <b class="num">${p.vale === null ? '—' : eur(p.vale)}</b></div>
+    <div class="grafFila"><span><i class="rayada"></i>Lo que has puesto</span>
+      <b class="num">${eur(p.puesto)}</b></div>
+    <div class="grafFila dif ${dif !== null && dif < 0 ? 'rojo' : ''}">
+      <span>Diferencia</span>
+      <b>${dif === null ? '—' : `${dif >= 0 ? '▲' : '▼'} <span class="num">${
+        eur(Math.abs(dif))}</span>${pct === null ? ''
+        : ` <span class="num">${pct >= 0 ? '+' : '−'}${pc(Math.abs(pct))}</span>`}`}</b></div>`;
+}
+
+/** La misma lectura en una frase, para quien usa lector de pantalla. */
+function textoPunto(p) {
+  const fecha = new Date(p.ms).toLocaleDateString('es-ES',
+    { day: 'numeric', month: 'long', year: 'numeric' });
+  return p.vale === null
+    ? `${fecha}: has puesto ${eur(p.puesto)}, sin valor registrado`
+    : `${fecha}: vale ${eur(p.vale)}, has puesto ${eur(p.puesto)}`;
+}
+
+/* ---------- La barra móvil ----------
+   Se engancha al punto más cercano: se apunta a una fecha, no a una línea de un
+   píxel. Con el teclado hacen las flechas lo mismo que el dedo, porque si la
+   única forma de leer un valor fuera arrastrar, quien no puede arrastrar se
+   queda sin los números. */
+function enchufarBarra(panel) {
+  const caja = panel.querySelector('#grafCaja');
+  if (!caja) return;
+  const lee = panel.querySelector('#grafLee');
+
+  const mover = i => {
+    const n = grafPts.length;
+    grafIdx = Math.max(0, Math.min(n - 1, i));
+    const p = grafPts[grafIdx];
+    lee.innerHTML = lectura(grafPts, grafIdx, grafColor);
+    panel.querySelector('#grafBarra')?.remove();
+    caja.insertAdjacentHTML('beforeend',
+      marcaBarra(grafPts, grafIdx, grafColor, grafEscala.min, grafEscala.rango));
+    caja.setAttribute('aria-valuenow', grafIdx);
+    caja.setAttribute('aria-valuetext', textoPunto(p));
+  };
+
+  const desdeX = ev => {
+    const r = caja.getBoundingClientRect();
+    const f = (ev.clientX - r.left) / Math.max(1, r.width);
+    mover(Math.round(f * (grafPts.length - 1)));
+  };
+
+  caja.addEventListener('pointerdown', e => {
+    caja.setPointerCapture(e.pointerId);
+    desdeX(e);
+    e.preventDefault();        // sin esto el arrastre selecciona texto
+  });
+  caja.addEventListener('pointermove', e => {
+    if (caja.hasPointerCapture(e.pointerId)) desdeX(e);
+  });
+  caja.addEventListener('keydown', e => {
+    const salto = { ArrowLeft: -1, ArrowRight: 1, PageDown: -5, PageUp: 5 }[e.key];
+    if (salto !== undefined) { mover(grafIdx + salto); e.preventDefault(); return }
+    if (e.key === 'Home') { mover(0); e.preventDefault() }
+    if (e.key === 'End')  { mover(grafPts.length - 1); e.preventDefault() }
+  });
 }
 /* ---------- Actualizar precios ---------- */
 async function actualizar2(vista) {

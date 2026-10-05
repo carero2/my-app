@@ -493,6 +493,39 @@ cero, quedan pegadas arriba sin que se vea ni el movimiento ni el hueco entre el
 empezar en cero exagera las subidas, cuando ocurre se dice debajo de la gráfica en vez de
 esconderlo.
 
+#### Hacer legible la plusvalía
+
+Una gráfica con dos líneas de 7.400 y 8.800 siempre va a parecer dos rectas paralelas: el hueco
+entre ellas es un 12% de la magnitud. Ese hueco *es* la plusvalía, o sea el único dato que
+justifica la gráfica. Tres cosas lo rescatan.
+
+**La banda entre las líneas lleva el relleno.** Antes se rellenaba desde la línea de aportado
+hasta el borde inferior, con lo que la plusvalía quedaba como una rendija encima de un bloque
+enorme de tinta: el dato que importaba era el único sin color. Ahora se pinta lo que hay *entre*
+las dos líneas. Se parte en verde y rojo con dos recortes —uno por encima de la línea de aportado,
+otro por debajo— de modo que cuando el valor cruza y se pone en pérdidas cada tramo sale con su
+color, sin tener que calcular dónde se cortan exactamente.
+
+**El eje Y existe.** Tres marcas (máximo, medio, mínimo) con sus hairlines. Van fuera del SVG a
+propósito: dentro se deformarían, porque el lienzo es de 0 a 100 y se estira a lo ancho y a lo
+alto por separado. Eso es lo que permite dibujar las líneas sin calcular un solo píxel, y lo que
+destrozaría cualquier texto metido ahí.
+
+**Una barra que se arrastra.** Se mueve con el dedo o con las flechas y engancha al punto más
+cercano: se apunta a una fecha, no a una línea de un píxel. Debajo, la lectura dice la fecha, los
+dos importes y la diferencia en euros y en porcentaje. Tres decisiones dentro de esto:
+
+- **La lectura ocupa su sitio siempre**, empezando en hoy. Si apareciera al tocar, el panel
+  crecería y empujaría media pantalla hacia abajo justo mientras se arrastra.
+- **Va debajo de la gráfica y hace también de leyenda.** Cada fila lleva su clave, así que una
+  leyenda aparte solo repetiría los nombres y robaría el alto que necesita la gráfica.
+- **El teclado hace lo mismo que el dedo** (flechas, Inicio, Fin), y la caja se anuncia como
+  deslizador con la lectura entera en `aria-valuetext`. Si arrastrar fuera la única forma de ver
+  un número, quien no puede arrastrar se quedaría sin los números.
+
+Las dos series no se distinguen solo por el color: lo aportado va con línea discontinua, y su
+clave en la leyenda repite el rayado.
+
 El detalle de un producto repite el mismo esqueleto una capa más abajo, más sus movimientos y
 su ficha. Repetir el patrón es lo que hace que una app con cuentas se sienta sencilla.
 

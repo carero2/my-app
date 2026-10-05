@@ -23,6 +23,11 @@ export const eurN0 = n => `<span class="num">${eur0(n)}</span>`;
 
 export const eur  = n => n.toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
 export const eur0 = n => Math.round(n).toLocaleString('es-ES') + ' €';
+/* Porcentajes en español: coma decimal. Escritos con toString salían «14.2%»
+   justo al lado de un «1.432,04 €», con los dos separadores al revés en la
+   misma línea. */
+export const pc = (n, dec = 1) =>
+  n.toLocaleString('es-ES', {minimumFractionDigits:dec, maximumFractionDigits:dec}) + '%';
 export const escapar = s => String(s ?? '').replace(/[<>&"]/g,
   m => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[m]));
 
