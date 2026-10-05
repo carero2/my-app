@@ -1,7 +1,7 @@
 /* ==========================================================================
    Pestaña Hoy: lo que necesitas ver y tocar en el día en curso.
    ========================================================================== */
-import { datos, eur, eur0, dia, nombreCiclo, rangoCiclo, vacio } from './nucleo.js';
+import { datos, eur, eur0, eurN, eurN0, dia, nombreCiclo, rangoCiclo, vacio } from './nucleo.js';
 import * as fin from './finanzas.js';
 import * as hab from './habitos.js';
 import * as habUI from './habitos-ui.js';
@@ -27,7 +27,7 @@ export function pintar(vista, ir) {
     <button class="tarjetaAccion" id="irGasto">
       <span class="mas">+</span>
       <span class="txt"><b>Añadir gasto</b>
-        <small>${gastoHoy ? 'Hoy llevas ' + eur(gastoHoy) : 'Nada registrado hoy'}</small></span>
+        <small>${gastoHoy ? 'Hoy llevas ' + eurN(gastoHoy) : 'Nada registrado hoy'}</small></span>
     </button>
 
     ${pendientesRev.length ? `<button class="tarjetaAccion pendiente" id="irRevisar">
@@ -35,7 +35,7 @@ export function pintar(vista, ir) {
       <span class="txt"><b>Revisar ${pendientesRev.length} gasto${
         pendientesRev.length === 1 ? '' : 's'}</b>
         <small>Compartido${pendientesRev.length === 1 ? '' : 's'} · tu parte: ${
-          eur(pendientesRev.reduce((t, g) => t + g.c, 0))}</small></span>
+          eurN(pendientesRev.reduce((t, g) => t + g.c, 0))}</small></span>
     </button>` : ''}
 
     ${porCategorizar.length ? `<button class="tarjetaAccion pendiente" id="irSinCat">
@@ -51,7 +51,7 @@ export function pintar(vista, ir) {
       <div class="granCifra num">${eur(mes)}</div>
       ${presu ? `<div class="barra" style="margin-top:12px">
           <i class="${mes>presu?'pasado':''}" style="width:${Math.min(mes/presu,1)*100}%"></i></div>
-        <div class="delta">${mes <= presu ? `Te quedan ${eur0(presu-mes)} este mes`
+        <div class="delta">${mes <= presu ? `Te quedan ${eurN0(presu-mes)} este mes`
           : `Has pasado el presupuesto en ${eur0(mes-presu)}`}</div>`
         : '<div class="delta">Sin presupuesto definido</div>'}
       ${fin.excedidas().length ? `<div class="delta rojo">${fin.excedidas()

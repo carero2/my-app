@@ -1,5 +1,18 @@
 /* ==========================================================================
-   Inversiones: interfaz. El cálculo vive en inversiones.js.
+   Inversión: interfaz. El cálculo vive en inversiones.js.
+
+   Tres pantallas y un solo esqueleto repetido, que es lo que hace que una app
+   con cuentas se sienta sencilla:
+
+     Resumen    · todos los productos sumados. Valor, plusvalía y TIR arriba;
+                  debajo la gráfica de aportado contra valor; después la lista.
+     Detalle    · el mismo esqueleto para un producto, más sus movimientos.
+     Simulador  · no mira tus datos. Proyecta una regla de ahorro y sirve de
+                  puerta de entrada a quien todavía no invierte.
+
+   Una sola rentabilidad a la vista, la TIR, con una línea que la explica. Ver
+   dos a la vez (TIR y ponderada por tiempo) es la forma más rápida de que
+   alguien deje de fiarse de sus propios números.
    ========================================================================== */
 import {
   datos, anadir, actualizar, borrar, enLote, nube,
@@ -7,130 +20,236 @@ import {
   abrirHoja, cerrarHoja, confirmar,
 } from './nucleo.js';
 import {
-  MODOS, PALETA_INV, carteras, cartera, modoDe,
+  MODOS, TIPOS_PROD, PALETA_INV, tipoDe,
+  productos, producto, modoDe,
   aportes, valoraciones, posicionesDe, invertido,
-  vlDe, navEurDe, vlPedido, refrescarPrecios, valorPorPosiciones, anotarValor,
-  leerPosiciones,
+  vlDe, navEurDe, refrescarPrecios, valorPorPosiciones, anotarValor,
   valorActual, ultimoValor, fechaValor, rentabilidad, serie, reparto, desfase,
-  crearCartera, borrarCartera,
+  crearProducto, borrarProducto, seriePeriodica, leerPosiciones,
+  resumenGlobal, rentabilidadGlobal, serieGlobal,
+  ESCENARIOS, simular, costeDeEsperar, analisis, comisionDe, vlPedido,
 } from './inversiones.js';
+import { ingresado } from './finanzas.js';
 
-let sel = null;        // cartera que se está mirando
-let cargando = false;  // hay una petición de precios en vuelo
+let pantalla = 'resumen';   // 'resumen' | 'simulador'
+let sel = null;             // id del producto abierto, o null para el agregado
+let cargando = false;       // hay una petición de precios en vuelo
+
+/* Lo último que se simuló, para no perderlo al cambiar de pestaña. */
+let sim = { inicial: 0, mensual: 200, anios: 20, pct: 6, inflacion: 0, subida: 0 };
+
+const LINEA_TIR = 'Rentabilidad anual de tu dinero, contando cuándo metiste cada euro. '
+  + 'No es la rentabilidad del producto.';
 
 export function pintar(vista) {
-  const cs = carteras();
-  if (sel && !cs.some(c => c.id === sel)) sel = null;
-  if (!sel && cs.length) sel = cs[0].id;
-
   vista.innerHTML = `<div class="scroll">
     <div class="titulo">Inversión</div>
-    ${cs.length > 1 ? `<div class="segmentos envuelve">
-      ${cs.map(c => `<button class="seg" data-c="${c.id}" aria-pressed="${sel === c.id}"
-        style="${sel === c.id ? `background:${c.color};border-color:transparent;color:#fff`
-          : `border-color:${c.color}66`}"><i class="pinta" style="background:${c.color}"></i>${
-          escapar(c.nom)}</button>`).join('')}
-    </div>` : ''}
+    <div class="segmentos">
+      <button class="seg" data-p="resumen" aria-pressed="${pantalla === 'resumen'}">Mis productos</button>
+      <button class="seg" data-p="simulador" aria-pressed="${pantalla === 'simulador'}">Simulador</button>
+    </div>
     <div id="invCuerpo"></div>
   </div>`;
 
-  vista.querySelector('.segmentos')?.addEventListener('click', e => {
-    const b = e.target.closest('[data-c]'); if (!b) return;
-    sel = b.dataset.c; pintar(vista);
-  });
+  vista.querySelector('.segmentos').onclick = e => {
+    const b = e.target.closest('[data-p]'); if (!b) return;
+    pantalla = b.dataset.p; sel = null; pintar(vista);
+  };
 
   const cuerpo = vista.querySelector('#invCuerpo');
-  if (!cs.length) {
-    cuerpo.innerHTML = vacio({
-      titulo: 'Aún no sigues ninguna inversión',
-      cuerpo: 'Apunta lo que vas aportando y cuánto vale. Puedes dejar que los precios '
-            + 'se busquen solos por ISIN, anotar el valor a mano, o simplemente estimarlo '
-            + 'a un interés anual.',
-      accion: 'Crear mi primera cartera',
-    });
-    cuerpo.querySelector('[data-vacio]').onclick = () => hojaCartera(null, vista);
-    return;
-  }
-  pintarCartera(cuerpo, vista);
+  if (pantalla === 'simulador') return pintarSimulador(cuerpo, vista);
+  if (sel && producto(sel)) pintarDetalle(cuerpo, vista);
+  else { sel = null; pintarResumen(cuerpo, vista) }
+  quizaRefrescar(vista);
 }
 
-function pintarCartera(c, vista) {
-  const inv = cartera(sel);
-  const modo = modoDe(inv);
-  const puesto = invertido(sel);
-  const valor = valorActual(sel);
-  const plus = valor === null ? null : Math.round((valor - puesto) * 100) / 100;
-  const pctPlus = (plus === null || !puesto) ? null : Math.round((plus / puesto) * 1000) / 10;
-  const tirAnual = rentabilidad(sel);
-  const fecha = fechaValor(sel);
-  const ap = aportes(sel);
-  const pts = serie(sel);
+/* ---------- Precios al día sin pedirlo ----------
+   El valor liquidativo se publica una vez al día, así que una copia de menos de
+   doce horas es la misma. Si la que hay es más vieja, se pide sola al abrir la
+   pestaña: tener que acordarse de pulsar un botón es lo que hace que una
+   cartera esté siempre desactualizada. */
+const FRESCO = 12 * 3600 * 1000;
+let ultimoIntento = 0;
 
-  /* Aportación media al mes: ayuda a saber si el ritmo es el que creías. */
-  const meses = ap.length
-    ? Math.max(1, (Date.now() - Math.min(...ap.map(m => m.t))) / (30.44 * 86400000)) : 0;
-  const alMes = meses ? puesto / meses : 0;
+async function quizaRefrescar(vista) {
+  if (cargando || !nube) return;
+  if (Date.now() - vlPedido() < FRESCO) return;
+  /* Si falla, no se insiste en cada repintado: una vez por hora basta. */
+  if (Date.now() - ultimoIntento < 3600 * 1000) return;
+  const auto = productos().filter(p => modoDe(p) === 'auto' && posicionesDe(p.id).length);
+  if (!auto.length) return;
+  ultimoIntento = Date.now();
+  cargando = true;
+  try { for (const p of auto) await refrescarPrecios(p.id) }
+  finally { cargando = false; emitir() }
+}
+
+/* ==========================================================================
+   Resumen: todos los productos juntos
+   ========================================================================== */
+function pintarResumen(c, vista) {
+  const ps = productos();
+  if (!ps.length) {
+    /* La pantalla vacía no espera a que la llenes: enseña para qué sirve esto.
+       Quien todavía no invierte entra por el simulador, no por un formulario. */
+    c.innerHTML = vacio({
+      titulo: 'Aquí verás lo que tienes invertido',
+      cuerpo: 'Apunta cada producto —una cartera gestionada, un plan de pensiones, '
+            + 'unas acciones— y la app lleva la cuenta de lo que has puesto, lo que vale '
+            + 'y lo que ha rendido. Si todavía no inviertes, empieza por ver qué pasaría.',
+      accion: 'Ver qué pasaría si invirtiera',
+    }) + '<div class="acciones"><button class="accion nuevo" id="invNuevo">Añadir un producto</button></div>';
+    c.querySelector('[data-vacio]').onclick = () => { pantalla = 'simulador'; pintar(vista) };
+    c.querySelector('#invNuevo').onclick = () => hojaProducto(null, vista);
+    return;
+  }
+
+  const g = resumenGlobal();
+  const tirG = rentabilidadGlobal();
+  const pts = serieGlobal();
+  const noLiquido = ps.filter(p => !TIPOS_PROD[tipoDe(p)].liquido).length;
 
   c.innerHTML = `
     <div class="panel">
-      <div class="subtitulo" style="padding:0 0 6px">${escapar(inv.nom)} · ${
-        MODOS[modo].nom.toLowerCase()}</div>
-      <div class="granCifra num ${plus !== null && plus < 0 ? 'rojo' : ''}">${
-        valor === null ? '—' : eur(valor)}</div>
-      ${plus !== null ? `<div class="delta">${plus >= 0 ? '▲ ' : '▼ '}<span class="num">${
-        eur(Math.abs(plus))}</span>${pctPlus === null ? '' : ` · ${plus >= 0 ? '+' : '−'}${
-        Math.abs(pctPlus)}%`} sobre lo aportado</div>` : ''}
-      ${valor === null ? `<div class="delta">Sin valor todavía. ${
-        modo === 'auto' ? 'Añade tus fondos y actualiza los precios.'
-        : modo === 'manual' ? 'Anota cuánto vale hoy.' : 'Añade una aportación.'}</div>` : ''}
-      ${fecha ? `<div class="delta">Valorado a ${desdeDia(fecha)
-        .toLocaleDateString('es-ES', { day:'numeric', month:'long' })}${
-        modo === 'estimado' ? ' · proyección, no es dinero real' : ''}</div>` : ''}
-    </div>
-
-    ${(() => {
-      const d = desfase(sel); if (!d) return '';
-      return `<div class="calTot extra" style="border-color:var(--aviso)">
-        <span>Faltan ${d.n} aportacion${d.n === 1 ? '' : 'es'} por reflejar:
-          el valor se queda corto</span>
-        <b class="num">≈ ${eur(d.importe)}</b>
-      </div>
-      <p class="estado">Los títulos guardados son los del extracto del ${
-        new Date(d.desde).toLocaleDateString('es-ES', { day:'numeric', month:'long' })}.
-        Vuelve a pegar la tabla de tu banco para ponerlos al día.</p>`;
-    })()}
-
-    <div class="rejilla">
-      <div class="mini"><b class="num">${eur0(puesto)}</b><small>aportado en total</small></div>
-      <div class="mini"><b class="num">${tirAnual === null ? '—' : (tirAnual > 0 ? '+' : '')
-        + tirAnual + '%'}</b><small>anual (TIR)</small></div>
-      <div class="mini"><b class="num">${eur0(alMes)}</b><small>de media al mes</small></div>
-      <div class="mini"><b class="num">${ap.length}</b><small>aportacion${
-        ap.length === 1 ? '' : 'es'}</small></div>
+      <div class="subtitulo" style="padding:0 0 6px">${g.n} producto${g.n === 1 ? '' : 's'}</div>
+      <div class="granCifra num ${g.plus !== null && g.plus < 0 ? 'rojo' : ''}">${
+        g.valor === null ? '—' : eur(g.valor)}</div>
+      ${g.plus !== null ? `<div class="delta">${g.plus >= 0 ? '▲ ' : '▼ '}<span class="num">${
+        eur(Math.abs(g.plus))}</span> sobre los <span class="num">${eur(g.puesto)}</span>
+        que has puesto</div>` : ''}
+      ${tirG !== null ? `<div class="delta"><b class="num">${tirG > 0 ? '+' : ''}${tirG}%</b>
+        anual · TIR</div>
+        <p class="estado">${LINEA_TIR}</p>` : ''}
+      ${g.sinValor.length ? `<p class="estado rojo">${g.sinValor.length === 1
+        ? `Falta el valor de ${escapar(g.sinValor[0].nom)}`
+        : `Faltan los valores de ${g.sinValor.length} productos`}, así que el total
+        se queda corto.</p>` : ''}
     </div>
 
     ${pts.length > 1 ? `<div class="panel">
       <div class="rotulo">Aportado y valor</div>
-      ${grafica(pts, inv.color)}
+      ${grafica(pts, 'var(--acento)')}
       <div class="calPie">
-        <span><i class="lleno" style="background:${inv.color}"></i>Lo que vale</span>
+        <span><i class="lleno" style="background:var(--acento)"></i>Lo que vale</span>
         <span><i style="background:var(--hueco);border-color:transparent"></i>Lo que has puesto</span>
       </div>
     </div>` : ''}
 
-    ${modo === 'auto' ? bloquePosiciones(inv) : ''}
-    ${modo === 'manual' ? bloqueManual(inv) : ''}
-    ${modo === 'estimado' ? `<div class="panel">
-      <div class="rotulo" style="margin-top:0">Estimación al ${inv.pct ?? 0}% anual</div>
-      <p class="pieNota" style="padding:4px 0 0">Esto no es lo que vale tu cartera: es lo que
-        valdría si cada aportación hubiera crecido a ese interés desde el día que la hiciste.
-        Para ver el dinero de verdad, cambia el modo en los ajustes de la cartera.</p>
+    <div class="rotulo">Productos</div>
+    <ul class="filas" id="invLista">${ps.map(p => {
+      const v = valorActual(p.id), puesto = invertido(p.id);
+      const plus = v === null ? null : Math.round((v - puesto) * 100) / 100;
+      const d = desfase(p.id);
+      return `<li><button class="fila-prod" data-prod="${p.id}">
+        <span class="punto" style="background:${p.color}22;color:${p.color}">●</span>
+        <span class="txt"><b>${escapar(p.nom)}</b>
+          <small>${d ? '<span class="fijo rev">sin actualizar</span>' : ''}${
+            escapar(TIPOS_PROD[tipoDe(p)].nom)}${
+            TIPOS_PROD[tipoDe(p)].liquido ? '' : ' · no disponible'}</small></span>
+        <span class="txt" style="flex:none;text-align:right">
+          <b class="num">${v === null ? '—' : eur0(v)}</b>
+          <small class="num ${plus !== null && plus < 0 ? 'rojo' : ''}">${
+            plus === null ? 'sin valor' : (plus >= 0 ? '+' : '−') + eur0(Math.abs(plus))}</small></span>
+      </button></li>`;
+    }).join('')}</ul>
+    ${noLiquido ? `<p class="estado">Disponible ahora mismo: <b class="num">${eur(g.liquido)}</b>.
+      El resto está en productos de los que no puedes disponer cuando quieras.</p>` : ''}
+
+    ${bloqueAnalisis()}
+
+    <div class="acciones" style="margin-top:18px">
+      <button class="accion nuevo" id="invNuevo">Añadir producto</button>
+    </div>`;
+
+  c.querySelector('#invNuevo').onclick = () => hojaProducto(null, vista);
+  c.querySelector('#invLista').onclick = e => {
+    const f = e.target.closest('[data-prod]'); if (!f) return;
+    sel = f.dataset.prod; pintar(vista);
+  };
+}
+
+/* ---------- Qué dicen tus números ----------
+   Hechos sobre los datos del usuario, no opiniones sobre el mercado. Cuando se
+   compara con una regla conocida se cita la regla, para que se vea que es una
+   referencia de fuera y no un juicio de la app. */
+function bloqueAnalisis() {
+  /* El ingreso medio de los últimos seis meses, de la pestaña Finanzas. Esta
+     app tiene las dos mitades —lo que entra y lo que inviertes—, que es
+     justo lo que no puede cruzar una app que solo mira la cartera. */
+  let ingresoMensual = null;
+  const meses = [];
+  for (let i = 1; i <= 6; i++) meses.push(ingresado(-i));
+  const conDatos = meses.filter(x => x > 0);
+  if (conDatos.length >= 3) ingresoMensual = conDatos.reduce((a, b) => a + b, 0) / conDatos.length;
+
+  const hallazgos = analisis({ ingresoMensual });
+  if (!hallazgos.length) return '';
+  return `<div class="rotulo">Qué dicen tus números</div>
+    ${hallazgos.map(h => `<div class="panel hallazgo ${h.tono}">
+      <b>${h.titulo}</b>
+      <p>${h.texto}</p>
+      ${h.nota ? `<p class="estado">${h.nota}</p>` : ''}
+    </div>`).join('')}`;
+}
+
+/* ==========================================================================
+   Detalle de un producto
+   ========================================================================== */
+function pintarDetalle(c, vista) {
+  const p = producto(sel);
+  const modo = modoDe(p);
+  const puesto = invertido(sel);
+  const valor = valorActual(sel);
+  const plus = valor === null ? null : Math.round((valor - puesto) * 100) / 100;
+  const tirP = rentabilidad(sel);
+  const fecha = fechaValor(sel);
+  const ap = aportes(sel);
+  const pts = serie(sel);
+  const d = desfase(sel);
+
+  c.innerHTML = `
+    <button class="volver" id="invVolver">‹ Todos los productos</button>
+
+    <div class="panel">
+      <div class="subtitulo" style="padding:0 0 6px">${escapar(p.nom)} ·
+        ${escapar(TIPOS_PROD[tipoDe(p)].nom.toLowerCase())}</div>
+      <div class="granCifra num ${plus !== null && plus < 0 ? 'rojo' : ''}">${
+        valor === null ? '—' : eur(valor)}</div>
+      ${plus !== null ? `<div class="delta">${plus >= 0 ? '▲ ' : '▼ '}<span class="num">${
+        eur(Math.abs(plus))}</span> sobre los <span class="num">${eur(puesto)}</span>
+        que has puesto</div>` : ''}
+      ${tirP !== null ? `<div class="delta"><b class="num">${tirP > 0 ? '+' : ''}${tirP}%</b>
+        anual · TIR</div><p class="estado">${LINEA_TIR}</p>` : ''}
+      ${valor === null ? `<div class="delta">Sin valor todavía. ${
+        modo === 'auto' ? 'Añade tus posiciones y actualiza los precios.'
+        : 'Anota cuánto vale hoy.'}</div>` : ''}
+      ${fecha ? `<div class="delta">Valor a ${desdeDia(fecha)
+        .toLocaleDateString('es-ES', { day:'numeric', month:'long' })}</div>` : ''}
+    </div>
+
+    ${d ? `<div class="calTot extra" style="border-color:var(--aviso)">
+        <span>Faltan ${d.n} aportacion${d.n === 1 ? '' : 'es'} por reflejar:
+          el valor se queda corto</span>
+        <b class="num">≈ ${eur(d.importe)}</b></div>
+      <p class="estado">Las posiciones guardadas son las del extracto del ${
+        new Date(d.desde).toLocaleDateString('es-ES', { day:'numeric', month:'long' })}.
+        Vuelve a pegar la tabla de tu banco para ponerlas al día.</p>` : ''}
+
+    ${pts.length > 1 ? `<div class="panel">
+      <div class="rotulo">Aportado y valor</div>
+      ${grafica(pts, p.color)}
+      <div class="calPie">
+        <span><i class="lleno" style="background:${p.color}"></i>Lo que vale</span>
+        <span><i style="background:var(--hueco);border-color:transparent"></i>Lo que has puesto</span>
+      </div>
     </div>` : ''}
+
+    ${modo === 'auto' ? bloquePosiciones(p) : bloqueValores(p)}
 
     <div class="rotulo">Aportaciones</div>
     ${ap.length ? `<ul class="filas">${ap.slice().reverse().slice(0, 8).map(m => `
       <li data-ap="${m.id}">
-        <span class="punto" style="background:${inv.color}22;color:${inv.color}">${
+        <span class="punto" style="background:${p.color}22;color:${p.color}">${
           m.c >= 0 ? '↑' : '↓'}</span>
         <span class="txt"><b>${m.c >= 0 ? 'Aportación' : 'Reembolso'}</b>
           <small>${new Date(m.t).toLocaleDateString('es-ES',
@@ -140,9 +259,12 @@ function pintarCartera(c, vista) {
           data-tip="Borrar">✕</button>
       </li>`).join('')}</ul>
       ${ap.length > 8 ? `<p class="estado">Se enseñan las 8 últimas de ${ap.length}.</p>` : ''}`
-    : vacio({ titulo: 'Sin aportaciones', cuerpo: 'Apunta lo que metes y cuándo: es la mitad '
-        + 'de la cuenta, y sin ello no se puede saber cuánto has ganado.',
+    : vacio({ titulo: 'Sin aportaciones', cuerpo: 'Apunta lo que metes y cuándo: sin las fechas '
+        + 'se puede saber cuánto tienes, pero no cuánto ha rendido.',
         accion: 'Añadir la primera' })}
+
+    ${p.nota ? `<div class="rotulo">Por qué lo tengo</div>
+      <div class="panel"><p style="margin:0;white-space:pre-wrap">${escapar(p.nota)}</p></div>` : ''}
 
     <div class="acciones" style="margin-top:18px">
       <button class="accion" id="invAporte">Añadir aportación</button>
@@ -152,73 +274,71 @@ function pintarCartera(c, vista) {
       <button class="accion nuevo" id="invCfg">Ajustes</button>
     </div>`;
 
-  const $ = s => c.querySelector(s);
+  const $ = x => c.querySelector(x);
+  $('#invVolver').onclick = () => { sel = null; pintar(vista) };
   $('#invAporte').onclick = () => hojaAporte(null, vista);
-  /* Hay dos estados vacíos posibles: el de fondos (modo auto) y el de
-     aportaciones. Cada uno abre lo suyo. */
-  c.querySelectorAll('[data-vacio]').forEach(b => {
-    const deFondos = !!b.closest('.vacio')?.previousElementSibling?.textContent?.includes('Fondos')
-      || /extracto/i.test(b.textContent);
-    b.onclick = () => deFondos ? hojaImportar(vista) : hojaAporte(null, vista);
-  });
   $('#invValor')?.addEventListener('click', () => hojaValorManual(vista));
   $('#invPrecios')?.addEventListener('click', () => actualizar2(vista));
-  $('#invCfg').onclick = () => hojaCartera(inv, vista);
+  $('#invCfg').onclick = () => hojaProducto(p, vista);
   $('#invPos')?.addEventListener('click', () => hojaPosicion(null, vista));
   $('#invImport')?.addEventListener('click', () => hojaImportar(vista));
-  c.onclick = e => {
+  c.querySelectorAll('[data-vacio]').forEach(b => {
+    const deFondos = /pegar|tabla/i.test(b.textContent);
+    b.onclick = () => deFondos ? hojaImportar(vista) : hojaAporte(null, vista);
+  });
+  c.addEventListener('click', e => {
     const q = e.target.closest('[data-quitar]');
     if (q) { quitarAporte(q.dataset.quitar, vista); return }
-    const p = e.target.closest('[data-pos]');
-    if (p) hojaPosicion(datos.posiciones.find(x => x.id === p.dataset.pos), vista);
-  };
+    const pos = e.target.closest('[data-pos]');
+    if (pos) hojaPosicion(datos.posiciones.find(x => x.id === pos.dataset.pos), vista);
+  });
 }
 
 /* ---------- Bloques propios de cada modo ---------- */
-function bloquePosiciones(inv) {
-  const pos = posicionesDe(inv.id);
+function bloquePosiciones(p) {
+  const pos = posicionesDe(p.id);
   if (!pos.length) {
-    return `<div class="rotulo">Fondos</div>${vacio({
-      titulo: 'Sin fondos todavía',
+    return `<div class="rotulo">Posiciones</div>${vacio({
+      titulo: 'Sin posiciones todavía',
       cuerpo: 'Lo más rápido es copiar la tabla de posiciones de tu banco y pegarla: '
-            + 'de ahí salen los ISIN y los títulos sin teclear nada.',
-      accion: 'Pegar el extracto' })}
-    <div class="acciones"><button class="accion nuevo" id="invPos">Añadir uno a mano</button></div>`;
+            + 'de ahí salen los identificadores y las cantidades sin teclear nada.',
+      accion: 'Pegar la tabla' })}
+    <div class="acciones"><button class="accion nuevo" id="invPos">Añadir una a mano</button></div>`;
   }
-  const rep = reparto(inv.id);
-  const sinPrecio = pos.filter(p => !vlDe(p.isin)?.nav);
-  const fuente = pos.map(p => vlDe(p.isin)?.fuente).find(Boolean);
-  return `<div class="rotulo">Fondos</div>
-    ${(rep.length ? rep : pos.map(p => ({ ...p, valor: null, pct: null }))).map(p => {
-      const v = vlDe(p.isin);
-      return `<div class="filaCat2" data-pos="${p.id}">
-        <span class="txt"><b>${escapar(p.nom || v?.nom || p.isin)}</b>
-          <small>${escapar(p.isin)} · ${(p.part || 0).toLocaleString('es-ES',
-            { maximumFractionDigits: 4 })} part.${
+  const rep = reparto(p.id);
+  const sinPrecio = pos.filter(x => !navEurDe(x.isin));
+  const fuente = pos.map(x => vlDe(x.isin)?.fuente).find(Boolean);
+  return `<div class="rotulo">Posiciones</div>
+    ${(rep.length ? rep : pos.map(x => ({ ...x, valor: null, pct: null }))).map(x => {
+      const v = vlDe(x.isin);
+      return `<div class="filaCat2" data-pos="${x.id}">
+        <span class="txt"><b>${escapar(x.nom || v?.nom || x.isin)}</b>
+          <small>${escapar(x.isin)} · ${(x.part || 0).toLocaleString('es-ES',
+            { maximumFractionDigits: 4 })}${
             v?.nav ? ` · ${v.nav.toLocaleString('es-ES', { minimumFractionDigits: 2,
               maximumFractionDigits: 4 })} ${v.moneda || 'EUR'}${
               (v.moneda || 'EUR') !== 'EUR' && v.navEur
                 ? ` → ${v.navEur.toLocaleString('es-ES', { minimumFractionDigits: 2,
                     maximumFractionDigits: 4 })} €` : ''}`
             : ' · sin precio'}</small></span>
-        ${p.valor === null ? '' : `<span class="txt" style="flex:none;text-align:right">
-          <b class="num">${eur0(p.valor)}</b><small>${p.pct}%</small></span>`}
+        ${x.valor === null ? '' : `<span class="txt" style="flex:none;text-align:right">
+          <b class="num">${eur0(x.valor)}</b><small>${x.pct}%</small></span>`}
       </div>`;
     }).join('')}
     ${sinPrecio.length ? `<p class="estado rojo">Sin precio ${
-      sinPrecio.length === 1 ? 'un fondo' : sinPrecio.length + ' fondos'}: ${
-      sinPrecio.map(p => escapar(p.isin)).join(', ')}. ${
+      sinPrecio.length === 1 ? 'una posición' : sinPrecio.length + ' posiciones'}: ${
+      sinPrecio.map(x => escapar(x.isin)).join(', ')}. ${
       !nube ? 'Los precios los busca tu Worker, y la sincronización está sin configurar.'
-            : 'Pulsa «Actualizar precios»; si sigue igual, revisa el ISIN.'}</p>` : ''}
-    ${fuente ? `<p class="estado">Valores liquidativos de ${escapar(fuente)}, a través de tu
-      Worker. Se guardan en el móvil para poder mirar la cartera sin cobertura.</p>` : ''}
+            : 'Pulsa «Actualizar precios»; si sigue igual, revisa el identificador.'}</p>` : ''}
+    ${fuente ? `<p class="estado">Precios de ${escapar(fuente)}, a través de tu Worker.
+      Se guardan en el móvil para poder mirarlo sin cobertura.</p>` : ''}
     <div class="acciones">
-      <button class="accion" id="invImport">Pegar extracto</button>
-      <button class="accion nuevo" id="invPos">Añadir fondo</button></div>`;
+      <button class="accion" id="invImport">Pegar tabla</button>
+      <button class="accion nuevo" id="invPos">Añadir una</button></div>`;
 }
 
-function bloqueManual(inv) {
-  const vs = valoraciones(inv.id);
+function bloqueValores(p) {
+  const vs = valoraciones(p.id);
   if (!vs.length) return '';
   return `<div class="rotulo">Valores anotados</div>
     <ul class="filas">${vs.slice().reverse().slice(0, 5).map(m => `<li>
@@ -226,6 +346,101 @@ function bloqueManual(inv) {
         <small>${new Date(m.t).toLocaleDateString('es-ES',
           { day:'numeric', month:'short', year:'numeric' }).replace('.', '')}</small></span>
     </li>`).join('')}</ul>`;
+}
+
+/* ==========================================================================
+   Simulador
+
+   No mira tus datos: proyecta una regla de ahorro. Tres supuestos etiquetados
+   en vez de un número único, porque una banda de confianza se lee como «este
+   es el peor caso» y no lo es; y redondeado a miles, porque la falsa precisión
+   es lo que convierte una herramienta en una promesa.
+   ========================================================================== */
+const miles = n => Math.round(n / 1000) * 1000;
+
+function pintarSimulador(c, vista) {
+  const base = { ...sim };
+  const centro = simular({ ...base, pct: 6 });
+  const espera = costeDeEsperar({ ...base, pct: 6 }, 2);
+  const conInfl = base.inflacion > 0;
+
+  c.innerHTML = `
+    <p class="pieNota" style="padding:14px 0 0">Esto no mira tus datos: calcula qué pasaría
+      con una regla de ahorro. Sirve para hacerse una idea del orden de magnitud.</p>
+
+    <div class="panel">
+      <label><span>Cuánto aportas al mes</span>
+        <input id="siM" type="number" inputmode="decimal" step="any" min="0"
+          value="${base.mensual}"></label>
+      <label><span>Con cuánto empiezas</span>
+        <input id="siI" type="number" inputmode="decimal" step="any" min="0"
+          value="${base.inicial}"></label>
+      <label><span>Durante cuántos años</span>
+        <input id="siA" type="number" inputmode="numeric" step="1" min="1" max="60"
+          value="${base.anios}"></label>
+      <details class="mas" ${conInfl || base.subida ? 'open' : ''}>
+        <summary>Más supuestos</summary>
+        <label><span>Inflación anual (%), para verlo en euros de hoy</span>
+          <input id="siInf" type="number" inputmode="decimal" step="any" min="0"
+            value="${base.inflacion}" placeholder="0"></label>
+        <label><span>Cuánto sube tu aportación cada año (%)</span>
+          <input id="siSub" type="number" inputmode="decimal" step="any" min="0"
+            value="${base.subida}" placeholder="0"></label>
+      </details>
+    </div>
+
+    <div class="rotulo">Qué tendrías en ${base.anios} año${base.anios === 1 ? '' : 's'}</div>
+    <ul class="filas">${ESCENARIOS.map(e => {
+      const r = simular({ ...base, pct: e.pct });
+      return `<li>
+        <span class="txt"><b>Si rindiera un ${e.pct}% al año</b>
+          <small>${escapar(e.nom)}</small></span>
+        <span class="imp num">${eur0(miles(conInfl ? r.hoy : r.total))}</span>
+      </li>`;
+    }).join('')}</ul>
+    <p class="estado">${conInfl
+      ? `En euros de hoy, descontando una inflación del ${base.inflacion}% anual.`
+      : `En euros de dentro de ${base.anios} años. Abre «Más supuestos» para verlo en euros de hoy.`}</p>
+
+    ${centro.total > 0 ? `<div class="panel">
+      <div class="rotulo" style="margin-top:0">De dónde sale ese dinero</div>
+      <p class="pieNota" style="padding:4px 0 10px">Con el supuesto intermedio, del 6%.</p>
+      <div class="barra" style="height:14px">
+        <i style="width:${Math.round((centro.puesto / centro.total) * 100)}%;
+           background:var(--muted)"></i></div>
+      <div class="calTot" style="margin-top:12px">
+        <span>Lo pones tú</span><b class="num">${eur0(miles(centro.puesto))}</b></div>
+      <div class="calTot" style="margin-top:6px">
+        <span>Lo pone el interés compuesto</span>
+        <b class="num">${eur0(miles(centro.interes))}</b></div>
+    </div>` : ''}
+
+    ${espera.coste > 500 ? `<div class="panel">
+      <div class="rotulo" style="margin-top:0">Lo que cuesta esperar</div>
+      <p style="margin:8px 0 0">Empezando hoy tendrías <b class="num">${eur0(miles(espera.ahora))}</b>.
+        Empezando dentro de dos años, <b class="num">${eur0(miles(espera.luego))}</b>.</p>
+      <p class="estado">Esos dos años de espera cuestan
+        <b class="num">${eur0(miles(espera.coste))}</b>.</p>
+    </div>` : ''}
+
+    <p class="pieNota">Los mercados no suben en línea recta: la media puede cumplirse y aun así
+      pasar años en negativo. Los porcentajes de arriba son supuestos elegidos a mano, no una
+      predicción ni una proyección de ningún producto concreto.</p>`;
+
+  const leer = () => {
+    const n = x => { const v = parseFloat(c.querySelector(x)?.value); return isFinite(v) ? v : 0 };
+    sim = {
+      mensual: Math.max(0, n('#siM')),
+      inicial: Math.max(0, n('#siI')),
+      anios: Math.min(60, Math.max(1, Math.round(n('#siA')) || 1)),
+      pct: 6,
+      inflacion: Math.max(0, n('#siInf')),
+      subida: Math.max(0, n('#siSub')),
+    };
+    pintarSimulador(c, vista);
+  };
+  ['#siM', '#siI', '#siA', '#siInf', '#siSub'].forEach(x =>
+    c.querySelector(x)?.addEventListener('change', leer));
 }
 
 /* ---------- Gráfica de dos líneas ----------
@@ -254,7 +469,6 @@ function grafica(pts, color) {
     pts.length - 1].filter((v, i, a) => a.indexOf(v) === i)
     .map(i => `<span>${escapar(pts[i].etq)}</span>`).join('')}</div>`;
 }
-
 /* ---------- Actualizar precios ---------- */
 async function actualizar2(vista) {
   if (cargando) return;
@@ -275,20 +489,71 @@ async function actualizar2(vista) {
 }
 
 /* ---------- Hojas ---------- */
+const CADAS = { mes:'Cada mes', semana:'Cada semana', trimestre:'Cada trimestre', anio:'Cada año' };
+
 function hojaAporte(m, vista) {
   const nuevo = !m;
   abrirHoja(`<h3>${nuevo ? 'Añadir aportación' : 'Editar aportación'}</h3>
-    <label><span>Importe</span>
+    ${nuevo ? `<div class="opciones" id="apModo" style="margin-top:4px">
+      <button data-p="0" aria-pressed="true">Una sola vez</button>
+      <button data-p="1" aria-pressed="false">Periódica</button>
+    </div>` : ''}
+    <label><span>Importe${nuevo ? ' de cada aportación' : ''}</span>
       <input id="apC" type="number" inputmode="decimal" step="any" value="${m?.c ?? ''}"
         placeholder="250" autofocus>
       <small class="pega" id="apMal"></small></label>
-    <label><span>Fecha</span>
+    <label><span id="apEtqT">Fecha</span>
       <input id="apT" type="date" max="${dia()}" value="${dia(m?.t || Date.now())}"></label>
+
+    <div id="apPeri" class="oculto">
+      <label><span>Cada cuánto</span>
+        <select id="apCada" class="selAncho">${Object.entries(CADAS).map(([k, v]) =>
+          `<option value="${k}">${v}</option>`).join('')}</select></label>
+      <label><span>Hasta</span>
+        <input id="apHasta" type="date" max="${dia()}" value="${dia()}"></label>
+      <div id="apPrevia"></div>
+    </div>
+
     <p class="pieNota" style="padding:10px 0 0">Para un reembolso, pon el importe en negativo.</p>
     <div class="fila"><button id="apNo">Cancelar</button>
       <button class="ok" id="apOk">${nuevo ? 'Añadir' : 'Guardar'}</button></div>`,
   caja => {
     const $ = s => caja.querySelector(s);
+    let periodica = false;
+    const serie = () => seriePeriodica({
+      c: parseFloat($('#apC').value),
+      cada: $('#apCada').value,
+      desde: desdeDia($('#apT').value).getTime(),
+      hasta: desdeDia($('#apHasta').value).getTime(),
+    });
+    const previa = () => {
+      if (!periodica) return;
+      const s = serie();
+      const total = s.reduce((x, y) => x + y.c, 0);
+      $('#apPrevia').innerHTML = s.length
+        ? `<div class="calTot" style="margin-top:16px">
+             <span>${s.length} aportacion${s.length === 1 ? '' : 'es'}, de ${
+               new Date(s[0].t).toLocaleDateString('es-ES', { month:'short', year:'numeric' })
+               .replace('.', '')} a ${new Date(s[s.length - 1].t)
+               .toLocaleDateString('es-ES', { month:'short', year:'numeric' }).replace('.', '')}</span>
+             <b class="num">${eur(total)}</b></div>
+           <p class="estado">Compara ese total con lo que tu banco llame «invertido»: si no
+             cuadra, ajusta el importe o las fechas antes de guardar.</p>`
+        : `<p class="estado">Con esas fechas no sale ninguna aportación.</p>`;
+      $('#apOk').textContent = s.length ? `Añadir ${s.length}` : 'Añadir';
+    };
+    $('#apModo')?.addEventListener('click', e => {
+      const b = e.target.closest('[data-p]'); if (!b) return;
+      periodica = b.dataset.p === '1';
+      caja.querySelectorAll('#apModo button').forEach(x =>
+        x.setAttribute('aria-pressed', (x.dataset.p === '1') === periodica));
+      $('#apPeri').classList.toggle('oculto', !periodica);
+      $('#apEtqT').textContent = periodica ? 'Primera aportación' : 'Fecha';
+      $('#apOk').textContent = 'Añadir';
+      previa();
+    });
+    ['#apC', '#apT', '#apHasta', '#apCada'].forEach(x =>
+      caja.querySelector(x)?.addEventListener('input', previa));
     $('#apC').addEventListener('blur', e => {
       const v = parseFloat(e.target.value);
       const mal = e.target.value !== '' && (!isFinite(v) || v === 0);
@@ -305,6 +570,13 @@ function hojaAporte(m, vista) {
         $('#apC').classList.add('mal-dato');
         $('#apMal').textContent = 'Pon una cantidad distinta de cero.';
         return $('#apC').focus();
+      }
+      if (periodica) {
+        const s = serie();
+        if (!s.length) return avisar('Con esas fechas no sale ninguna aportación');
+        enLote(() => s.forEach(x => anadir('invmov', { inv: sel, tipo:'aporte', c: x.c, t: x.t })));
+        cerrarHoja(); emitir(); pintar(vista);
+        return avisar(`${s.length} aportaciones · ${eur(s.reduce((a, b) => a + b.c, 0))}`);
       }
       const t = desdeDia($('#apT').value).getTime();
       if (nuevo) anadir('invmov', { inv: sel, tipo: 'aporte', c, t });
@@ -439,7 +711,7 @@ function hojaImportar(vista) {
     <p>Copia la tabla de posiciones de tu banco y pégala aquí entera, con
        cabeceras y todo. Se buscan los ISIN y los títulos; lo demás se ignora.</p>
     <label><span>Tabla de posiciones</span>
-      <textarea id="imTxt" placeholder="IE00BYX5MX67  S&P 500 INDEX P ACC EUR  EUR  175.529  2.953,7100 €"
+      <textarea id="imTxt" placeholder="LU0000000000  FONDO INDEXADO GLOBAL  EUR  120,5  1.480,20 €"
         style="min-height:150px" autofocus></textarea></label>
     <div id="imPrevia"></div>
     <div class="fila"><button id="imNo">Cancelar</button>
@@ -501,13 +773,20 @@ function hojaImportar(vista) {
   });
 }
 
-function hojaCartera(inv, vista) {
+function hojaProducto(inv, vista) {
   const nuevo = !inv;
   const modo = nuevo ? 'manual' : modoDe(inv);
-  abrirHoja(`<h3>${nuevo ? 'Nueva cartera' : 'Ajustes de la cartera'}</h3>
+  const tipo = nuevo ? 'cartera' : tipoDe(inv);
+  abrirHoja(`<h3>${nuevo ? 'Nuevo producto' : 'Ajustes del producto'}</h3>
     <label><span>Nombre</span>
       <input id="caN" maxlength="40" value="${escapar(inv?.nom || '')}"
-        placeholder="Cartera indexada, plan de pensiones…"></label>
+        placeholder="Cartera indexada, plan de pensiones…" autofocus></label>
+
+    <label style="margin-top:20px"><span>Qué tipo de producto es</span>
+      <select id="caTipo" class="selAncho">${Object.entries(TIPOS_PROD).map(([id, t]) =>
+        `<option value="${id}" ${tipo === id ? 'selected' : ''}>${t.nom}</option>`).join('')}</select>
+    </label>
+    <p class="pieNota" id="caLiq" style="padding:8px 0 0"></p>
 
     <label style="margin-top:20px"><span>Cómo se sabe lo que vale</span></label>
     <div class="opciones" id="caModo">
@@ -516,10 +795,24 @@ function hojaCartera(inv, vista) {
     </div>
     <p class="pieNota" id="caAyuda" style="padding:8px 0 0">${MODOS[modo].ayuda}.</p>
 
-    <label id="caCampoPct" class="${modo === 'estimado' ? '' : 'oculto'}">
-      <span>Interés anual estimado (%)</span>
-      <input id="caPct" type="number" inputmode="decimal" step="any"
-        value="${inv?.pct ?? 8}" placeholder="8"></label>
+    <label><span>Efectivo sin invertir (€, opcional)</span>
+      <input id="caEfe" type="number" inputmode="decimal" step="any" min="0"
+        value="${inv?.efectivo ?? ''}" placeholder="0"></label>
+    <p class="pieNota" style="padding:6px 0 0">Lo que haya en la cuenta sin colocar. Solo se
+      suma cuando los precios se buscan solos; si anotas el valor a mano, ya lo llevará dentro.</p>
+
+    <label><span>Comisión de la plataforma (% al año, opcional)</span>
+      <input id="caCom" type="number" inputmode="decimal" step="any" min="0" max="10"
+        value="${inv?.comision ?? ''}" placeholder="0,15"></label>
+    <p class="pieNota" style="padding:6px 0 0">Lo que te cobra quien te lo gestiona, aparte de
+      lo que cobren los fondos. Suele venir en su web, no en la ficha de los productos.</p>
+
+    <label><span>Por qué lo tengo (opcional)</span>
+      <textarea id="caNota" maxlength="400" style="min-height:80px;font-family:inherit;
+        font-size:var(--t-base)" placeholder="Para qué es este dinero y cuándo piensas tocarlo"
+        >${escapar(inv?.nota || '')}</textarea></label>
+    <p class="pieNota" style="padding:6px 0 0">Escrito en frío, esto vale más que cualquier
+      gráfica el día que el producto esté en pérdidas.</p>
 
     <label style="margin-top:20px"><span>Color</span></label>
     <div class="colores" id="caCol">
@@ -535,13 +828,19 @@ function hojaCartera(inv, vista) {
   caja => {
     const $ = s => caja.querySelector(s);
     let mSel = modo, cSel = inv?.color || PALETA_INV[0];
+    const liq = () => {
+      const t = TIPOS_PROD[$('#caTipo').value];
+      $('#caLiq').textContent = t.liquido ? ''
+        : 'De este dinero no puedes disponer cuando quieras, así que no cuenta en el total '
+          + 'disponible.';
+    };
+    $('#caTipo').onchange = liq; liq();
     $('#caModo').onclick = e => {
       const b = e.target.closest('[data-m]'); if (!b) return;
       mSel = b.dataset.m;
       caja.querySelectorAll('#caModo button').forEach(x =>
         x.setAttribute('aria-pressed', x.dataset.m === mSel));
       $('#caAyuda').textContent = MODOS[mSel].ayuda + '.';
-      $('#caCampoPct').classList.toggle('oculto', mSel !== 'estimado');
     };
     $('#caCol').onclick = e => {
       const b = e.target.closest('[data-col]'); if (!b) return;
@@ -552,26 +851,29 @@ function hojaCartera(inv, vista) {
     $('#caDel')?.addEventListener('click', async () => {
       const nAp = aportes(inv.id).length;
       if (!await confirmar({
-        titulo: `Borrar la cartera ${inv.nom}`,
+        titulo: `Borrar el producto ${inv.nom}`,
         cuerpo: `Se irán también sus ${nAp} aportacion${nAp === 1 ? '' : 'es'}, sus valores `
-              + 'anotados y sus fondos. No se puede deshacer.',
-        si: 'Borrar la cartera', no: 'Cancelar',
+              + 'anotados y sus posiciones. No se puede deshacer.',
+        si: 'Borrar el producto', no: 'Cancelar',
       })) return;
-      borrarCartera(inv.id); sel = null;
+      borrarProducto(inv.id); sel = null;
       cerrarHoja(); emitir(); pintar(vista);
-      avisar('Cartera borrada');
+      avisar('Producto borrado');
     });
     $('#caNo').onclick = cerrarHoja;
     $('#caOk').onclick = () => {
       const campos = {
-        nom: $('#caN').value.trim() || 'Mi cartera',
+        nom: $('#caN').value.trim() || 'Mi producto',
+        tipo: $('#caTipo').value,
         modo: mSel, color: cSel,
-        pct: mSel === 'estimado' ? (parseFloat($('#caPct').value) || 0) : (inv?.pct ?? 8),
+        nota: $('#caNota').value.trim(),
+        comision: $('#caCom').value === '' ? null : (parseFloat($('#caCom').value) || 0),
+        efectivo: $('#caEfe').value === '' ? null : (parseFloat($('#caEfe').value) || 0),
       };
-      if (nuevo) sel = crearCartera(campos).id;
+      if (nuevo) sel = crearProducto(campos).id;
       else actualizar('inversiones', inv.id, campos);
       cerrarHoja(); emitir(); pintar(vista);
-      avisar(nuevo ? 'Cartera creada' : 'Cartera actualizada');
+      avisar(nuevo ? 'Producto creado' : 'Producto actualizado');
     };
   });
 }

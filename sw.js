@@ -1,4 +1,4 @@
-const CACHE = 'myapp-v24';
+const CACHE = 'myapp-v28';
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './css/estilo.css',

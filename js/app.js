@@ -2,8 +2,8 @@
    Arranque y navegación entre módulos.
    ========================================================================== */
 import {
-  alCambiar, alNavegar, sincronizar, ultimaSync, avisar, aplicarTema,
-  datos, borrar, enLote,
+  alCambiar, alNavegar, sincronizar, ultimaSync, avisar, aplicarTema, aplicarDiscreto,
+  datos, borrar, enLote, actualizar,
 } from './nucleo.js';
 import * as hoy from './hoy.js';
 import * as finanzas from './finanzas.js';
@@ -11,7 +11,7 @@ import * as habitos from './habitos-ui.js';
 import * as inversion from './inversiones-ui.js';
 import * as ajustes from './ajustes.js';
 
-const MODULOS = { hoy, finanzas, habitos, inversion, ajustes };
+const MODULOS = { hoy, finanzas, inversion, habitos, ajustes };
 let actual = 'hoy';
 
 export function ir(nombre) {
@@ -47,8 +47,19 @@ alNavegar(ir);
    actualizado vuelve a subir notas, la siguiente apertura las vuelve a tirar. */
 if (datos.notas.length) enLote(() => [...datos.notas].forEach(n => borrar('notas', n.id)));
 
+/* ---------- Retirada del modo «estimado» (v26) ----------
+   Proyectar lo aportado a un interés fijo no era seguir una inversión, era
+   simular una. Lo que proyecta ahora vive en el simulador, que no finge mirar
+   tus datos. Los productos que estuvieran en ese modo pasan a valor a mano. */
+{
+  const viejos = datos.inversiones.filter(p => p.modo === 'estimado');
+  if (viejos.length) enLote(() =>
+    viejos.forEach(p => actualizar('inversiones', p.id, { modo: 'manual' })));
+}
+
 /* El tema elegido, antes de pintar nada, para que no haya un fogonazo claro. */
 aplicarTema();
+aplicarDiscreto();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => aplicarTema());
 
 /* Las ocho categorías de siempre se crean la primera vez que se abre la app. */

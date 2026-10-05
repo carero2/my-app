@@ -444,6 +444,65 @@ svg.graf{width:100%;height:110px;overflow:visible;margin-top:var(--e3);display:b
 .semanaBarras{align-items:flex-end;margin-top:var(--e4)}
 .semanaBarras i{border-radius:var(--r1) var(--r1) 2px 2px;margin-bottom:var(--e1);min-height:3px}
 
+/* ---------- Modo discreto ----------
+   Las cifras se tapan con puntos del mismo ancho, para que nada se mueva de
+   sitio al encenderlo y apagarlo. Se marcan con .num todas las cantidades, así
+   que basta con una regla. */
+:root.discreto .num,
+:root.discreto .granCifra,
+:root.discreto .cifra,
+:root.discreto .imp{position:relative;color:transparent!important}
+:root.discreto .num > *,
+:root.discreto .granCifra > *,
+:root.discreto .imp > *{visibility:hidden}
+:root.discreto .num::after,
+:root.discreto .granCifra::after,
+:root.discreto .cifra::after,
+:root.discreto .imp::after{content:'••••';position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:inherit;
+  color:var(--muted);letter-spacing:.12em}
+:root.discreto .granCifra::after,
+:root.discreto .cifra::after{justify-content:flex-start}
+
+/* Un hallazgo del análisis: un hecho, no un adorno. El borde lateral lo
+   distingue de una tarjeta de datos sin gritar. */
+.hallazgo{border-left:3px solid var(--acento)}
+.hallazgo.aviso{border-left-color:var(--aviso)}
+.hallazgo b{display:block;font-size:var(--t-base);font-weight:600;letter-spacing:-.01em}
+.hallazgo p{margin:var(--e2) 0 0;font-size:var(--t-aux);line-height:1.55}
+.hallazgo .estado{padding:var(--e2) 0 0}
+
+/* Campos dentro de un panel. Hasta ahora solo las hojas modales tenían
+   formularios; el simulador los trae a la pantalla y necesitan su propio
+   apilado, porque sin él la etiqueta y el campo se quedan en la misma línea. */
+.panel label{display:block;margin-top:var(--e4)}
+.panel > label:first-child{margin-top:0}
+.panel label > span{display:block;font-size:var(--t-meta);font-weight:500;
+  color:var(--muted);margin-bottom:var(--e1)}
+.panel input,.panel select,.panel textarea{width:100%;min-height:48px;
+  padding:var(--e3) var(--e4);background:var(--paper);
+  border:1px solid var(--line);border-radius:var(--r2);font-size:var(--t-base)}
+.panel textarea{resize:vertical}
+
+/* Volver atrás dentro de una pestaña, cuando hay un nivel de detalle */
+.volver{min-height:44px;margin:var(--e3) 0 0;padding:0 var(--e3) 0 0;
+  font-size:var(--t-aux);font-weight:500;color:var(--acento);
+  display:inline-flex;align-items:center;gap:var(--e1)}
+
+/* Una fila de la lista que lleva a su detalle: ocupa toda la fila para que el
+   objetivo sea la fila entera y no solo el texto. */
+.fila-prod{display:flex;align-items:center;gap:var(--e3);width:100%;
+  min-height:56px;padding:0;text-align:left}
+ul.filas li:has(.fila-prod){padding:var(--e2) var(--e4)}
+
+/* Bloque de supuestos que empieza plegado */
+details.mas{margin-top:var(--e4);border-top:1px solid var(--line);padding-top:var(--e2)}
+details.mas summary{min-height:44px;display:flex;align-items:center;cursor:pointer;
+  font-size:var(--t-aux);font-weight:500;color:var(--acento);list-style:none}
+details.mas summary::-webkit-details-marker{display:none}
+details.mas summary::before{content:'+';margin-right:var(--e2);font-weight:600}
+details.mas[open] summary::before{content:'−'}
+
 /* Selector a lo ancho (ámbito del calendario, por ejemplo) */
 .selAncho{width:100%;min-height:48px;padding:var(--e3) var(--e4);background:var(--card);
   border:1px solid var(--line);box-shadow:var(--sombra);border-radius:var(--r2);

@@ -8,10 +8,11 @@ import {
   borrar, guardar, enLote, emitir, avisar, eur0, dia,
   abrirHoja, cerrarHoja, confirmar,
   TEMAS, temaActual, fijarTema, cicloDia, nombreCiclo, rangoCiclo,
+  discreto, alternarDiscreto,
 } from './nucleo.js';
 import * as fin from './finanzas.js';
 
-const VERSION = 'v24';
+const VERSION = 'v28';
 
 export function pintar(vista) {
   const n = pendientes();
@@ -37,6 +38,8 @@ export function pintar(vista) {
     <div class="grupo indice">
       <button data-h="tema"><span>Apariencia</span>
         <small>${TEMAS[temaActual()].toLowerCase()} ›</small></button>
+      <button data-h="discreto"><span>Modo discreto</span>
+        <small>${discreto() ? 'importes ocultos' : 'importes a la vista'} ›</small></button>
       <button data-h="datos"><span>Datos y copias</span>
         <small>${items} items ›</small></button>
       <button data-h="acerca"><span>Acerca de</span>
@@ -50,7 +53,7 @@ export function pintar(vista) {
   vista.querySelector('.scroll').addEventListener('click', e => {
     const b = e.target.closest('[data-h]'); if (!b) return;
     ({ nube: hojaNube, presu: hojaPresupuesto, cats: fin.hojaCategorias,
-       fijos: fin.hojaFijos, ciclo: hojaCiclo, tema: hojaTema,
+       fijos: fin.hojaFijos, ciclo: hojaCiclo, tema: hojaTema, discreto: hojaDiscreto,
        datos: hojaDatos, acerca: hojaAcerca })[b.dataset.h](vista);
   });
   vista.querySelector('#ficheroJSON').onchange = e => importarCopia(e, vista);
@@ -150,6 +153,32 @@ function hojaNube(vista) {
       configurarNube(null); cerrarHoja(); pintar(vista); avisar('Desconectado');
     });
   });
+}
+
+/* ---------- Modo discreto ---------- */
+function hojaDiscreto(vista) {
+  const pinta = () => abrirHoja(`
+    <h3>Modo discreto</h3>
+    <p>Sustituye todos los importes por puntos. Los datos no se tocan: solo
+       dejan de verse, para poder abrir la app en el metro o enseñarle algo a
+       alguien sin que vea cuánto tienes.</p>
+    <div class="opciones" id="dsSel" style="margin-top:20px">
+      <button data-d="0" aria-pressed="${!discreto()}">Importes a la vista</button>
+      <button data-d="1" aria-pressed="${discreto()}">Ocultarlos</button>
+    </div>
+    <p class="pieNota" style="padding:14px 0 0">Esto solo afecta a este dispositivo: no viaja
+       en la sincronización.</p>
+    <div class="fila"><button id="dsCerrar">Cerrar</button></div>`,
+  caja => {
+    caja.querySelector('#dsSel').onclick = e => {
+      const b = e.target.closest('[data-d]'); if (!b) return;
+      if ((b.dataset.d === '1') === discreto()) return;
+      alternarDiscreto();
+      cerrarHoja(); pinta(); pintar(vista);
+    };
+    caja.querySelector('#dsCerrar').onclick = cerrarHoja;
+  });
+  pinta();
 }
 
 /* ---------- Mes contable ---------- */

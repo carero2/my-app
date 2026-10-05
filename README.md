@@ -23,7 +23,7 @@ de sobra este uso.
   - [3. Desplegar el Worker (opcional)](#3-desplegar-el-worker-opcional)
   - [4. Conectar la app con el Worker](#4-conectar-la-app-con-el-worker)
 - [Uso](#uso)
-  - [Inversiones](#inversiones)
+  - [Inversión](#inversión)
   - [Qué pasa al guardar un movimiento](#qué-pasa-al-guardar-un-movimiento)
   - [El mes contable](#el-mes-contable)
   - [El calendario](#el-calendario)
@@ -445,88 +445,240 @@ viniste en vez de dejarte en el teclado mirando una pantalla en blanco:
 Como el movimiento desaparece de la vista al cambiar de pantalla, el aviso de confirmación
 lleva **Deshacer**: es la única forma de corregir un dedazo sin tener que ir a buscarlo.
 
-### Inversiones
+### Inversión
 
-Una **cartera** es un conjunto de aportaciones y un valor. Puedes tener varias (la cartera
-indexada, un plan de pensiones) y cada una se sigue como mejor convenga:
+Un **producto** es cualquier cosa en la que tengas dinero metido: una cartera gestionada, un
+plan de pensiones, unas acciones, un piso. Por dentro todos son lo mismo —una lista de
+movimientos— y el tipo solo decide dos cosas: cómo se actualiza su valor y si el dinero es
+disponible o no. No hay lógica distinta por tipo, que es lo que mantiene el módulo pequeño.
+
+La pestaña tiene dos pantallas: **Mis productos** y **Simulador**.
+
+#### Mis productos
+
+El agregado va en este orden, y el orden importa:
+
+1. **Valor total**, y debajo la **plusvalía en euros** y la **TIR anual**. Nada más arriba. La
+   pregunta que uno se hace al abrir esto es «cuánto tengo y he ganado dinero», y el euro
+   absoluto la responde mejor que ningún porcentaje.
+2. **Aportado contra valor**, en una sola gráfica. La distancia entre las dos líneas *es* la
+   plusvalía: hace visible el interés compuesto y hace llevaderas las caídas.
+3. **La lista de productos**, cada uno con su valor y su plusvalía.
+
+El detalle de un producto repite el mismo esqueleto una capa más abajo, más sus movimientos y
+su ficha. Repetir el patrón es lo que hace que una app con cuentas se sienta sencilla.
+
+Los productos de los que no se puede disponer cuando uno quiere —un plan de pensiones, un
+inmueble— se marcan y se descuentan del total disponible, que se enseña aparte.
+
+#### Una sola rentabilidad
+
+Se enseña la **TIR** y nada más, con una línea debajo que dice lo que es: «rentabilidad anual
+de tu dinero, contando cuándo metiste cada euro; no es la rentabilidad del producto».
+
+La alternativa, la rentabilidad ponderada por tiempo, mide al gestor y no a ti, y enseñar las
+dos a la vez es la forma más rápida de que alguien deje de fiarse de sus propios números: con
+aportaciones periódicas las dos se separan mucho y la gente acaba preguntando cómo puede estar
+ganando y perdiendo a la vez. Tampoco se enseña el porcentaje simple sobre lo aportado, que con
+aportaciones repartidas en el tiempo directamente miente.
+
+#### Dos niveles de entrada
+
+No hace falta el histórico completo para ver un número. **Nivel 1**: creas el producto y anotas
+lo que vale; eso ya da valor y plusvalía desde el primer día. **Nivel 2**: añades las
+aportaciones con sus fechas, y eso desbloquea la TIR y la gráfica. Nunca se bloquea el nivel 1,
+que es justo lo que hace que la gente abandone estas apps y vuelva a su hoja de cálculo.
+
+#### Cómo se sabe lo que vale
 
 | Modo | Qué hace | Para qué sirve |
 |---|---|---|
-| **Precios automáticos** | Apuntas las posiciones y el Worker busca su precio | Lo más fiel, y se mantiene solo entre movimientos |
-| **Valor a mano** | Apuntas tú el total cuando lo consultes | Carteras gestionadas: el banco ya te da ese número |
-| **Estimación** | Proyecta lo aportado a un interés anual que fijas tú | Hacerse una idea, no saber |
+| **Valor a mano** | Apuntas tú el total cuando lo consultes | Lo único posible para una cartera gestionada, un plan de pensiones o un piso |
+| **Precios automáticos** | Apuntas las posiciones y se busca su precio | Cuando controlas las posiciones; se mantiene solo entre movimientos |
 
-**Cuál te conviene.** En una cartera gestionada tus títulos de cada fondo cambian cada vez que
-aportas, y además cuando el gestor rebalancea, si es una cartera gestionada. Eso no invalida el
-modo automático: **entre dos movimientos la valoración es exacta**, porque los títulos no se
-mueven solos y lo único que cambia es el precio, que ya se busca solo. Lo que hacía impracticable
-ese modo era tener que teclear los títulos de cada posición, y para eso está el importador:
-pegas la tabla de posiciones de tu banco y se actualiza todo.
+**Cuándo hay que volver a pegar el extracto:** cuando aportes, vendas, o sepas que han
+rebalanceado. Entre medias no hace falta tocar nada, porque los títulos no se mueven solos y lo
+único que cambia es el precio. Si se queda viejo, la app lo detecta —sabe qué aportaciones has
+registrado después— y avisa de cuánto se está quedando corto el valor.
 
-**Cuándo hay que volver a pegarla:** cuando aportes, vendas, o sepas que han rebalanceado. Entre
-medias no hace falta tocar nada. Si se queda vieja, la app lo detecta —sabe qué aportaciones has
-registrado después del último extracto— y avisa de cuánto se está quedando corto el valor, en
-vez de enseñar un número mal sin decir nada.
+#### Pegar el extracto
 
-Así que el modo automático sirve igual para una cartera gestionada que para una propia. El modo
-a mano queda para quien prefiera no mantener las posiciones y copiar solo el total.
-
-### Pegar el extracto
-
-En modo automático, el botón **Pegar extracto** acepta la tabla de posiciones tal cual la copias
-del banco, con cabeceras y columnas de sobra. De cada fila saca el ISIN, los títulos y, si viene,
-el valor de mercado en euros, que se anota como valoración del día.
+El botón **Pegar tabla** acepta la tabla de posiciones tal cual la copias del banco, con
+cabeceras y columnas de sobra. De cada fila saca el identificador, la cantidad y, si viene, el
+valor de mercado en euros, que se anota como valoración del día.
 
 No se asume ningún formato concreto, solo que cada fila lleve un identificador y una cantidad.
 Los ISIN se reconocen en cualquier parte de la línea porque su formato es inconfundible. Los
 **tickers** solo se aceptan cuando abren la línea y les sigue una cantidad: un ticker suelto es
 indistinguible de una palabra cualquiera, y sin esa cautela un texto corriente generaría
 posiciones inventadas llamadas «EUR» o «TOTAL».
+
 Dos detalles que hacen falta para que funcione con extractos reales:
 
 - Hay tablas donde **los títulos llevan el punto como separador decimal** (`3.52`
-  participaciones) mientras que **los importes de la misma tabla llevan la coma** (`184,8400 €`).
-  El lector mira cuál es el último separador de cada número en vez de asumir una convención.
-- Muchos nombres de producto llevan cifras («S&P 500 INDEX», «VG 20 EUR TREAS»), así que los
-  títulos se buscan como el último número antes del primer importe con divisa, no como el
-  primer número de la fila.
+  participaciones) mientras que **los importes de la misma tabla llevan la coma**
+  (`1.234,5600 €`). El lector mira cuál es el último separador de cada número en vez de asumir
+  una convención.
+- Muchos nombres de producto llevan cifras dentro, así que los títulos se buscan como el último
+  número antes del primer importe con divisa, no como el primer número de la fila.
 
 Lo que esté en la app y no aparezca en el extracto se entiende vendido y se quita.
 
-**La rentabilidad se calcula por TIR**, no dividiendo la ganancia entre lo aportado. Con
-aportaciones repartidas en el tiempo esa división miente: mil euros puestos hace cinco años y
-mil puestos el mes pasado no han trabajado lo mismo. La TIR busca el interés anual que, aplicado
-a cada aportación desde el día que la hiciste, da exactamente el valor de hoy. Hacen falta al
-menos dos meses de recorrido para que el número signifique algo; antes, se muestra un guion.
+#### De dónde salen los precios
 
-**De dónde salen los precios.** Para acciones y ETFs hay ticker y Yahoo Finance los sirve. Los
-fondos de inversión son el caso difícil: no cotizan en bolsa, así que no hay ticker ni precio
-intradía, solo un valor liquidativo que la gestora publica una vez al día y con un día de
-retraso. Las APIs financieras con plan gratuito (Twelve Data, Financial Modeling Prep, Alpha
-Vantage) excluyen los fondos europeos, así que la fuente es la ficha pública de **quefondos.com**,
-que cubre todo lo registrado en España y no pide clave; Yahoo queda de respaldo también para
-ellos. Las llamadas las hace tu Worker, no el navegador, y el resultado se cachea doce horas en
-KV: pedirlo más a menudo no devolvería nada nuevo.
+Para acciones y ETFs hay ticker y Yahoo Finance los sirve. Los fondos de inversión son el caso
+difícil: no cotizan en bolsa, así que no hay ticker ni precio intradía, solo un valor
+liquidativo que la gestora publica una vez al día y con un día de retraso. Las APIs financieras
+con plan gratuito (Twelve Data, Financial Modeling Prep, Alpha Vantage) excluyen los fondos
+europeos, así que la fuente es la ficha pública de **quefondos.com**, que cubre todo lo
+registrado en España y no pide clave; Yahoo queda de respaldo también para ellos.
 
 El identificador decide la ruta: un ISIN va primero a quefondos y luego a Yahoo; un ticker va
-directo a Yahoo, que es quien lo conoce.
+directo a Yahoo. Las llamadas las hace tu Worker, no el navegador, y el resultado se cachea doce
+horas en KV.
 
-**Divisas.** Un fondo en dólares no se puede sumar a uno en euros: tratar 192,86 $ como 192,86 €
-infla esa posición un 12%. El Worker convierte con el tipo del Banco Central Europeo, servido por
-frankfurter.dev, y cachea el cambio como los valores liquidativos. Si un día no hay tipo de
-cambio, la posición se queda sin valorar antes que valorarse mal.
+**Divisas.** Un producto en dólares no se puede sumar a uno en euros: tratar 192,86 $ como
+192,86 € infla esa posición un 12%. El Worker convierte con el tipo del Banco Central Europeo,
+servido por frankfurter.dev. Si un día no hay tipo de cambio, la posición se queda sin valorar
+antes que valorarse mal.
 
-Si un fondo no se puede valorar, la app lo dice y **no** inventa un total: una cartera a medio
-valorar daría un número falso. El último valor conocido se guarda en el móvil, así que la cartera
-se puede mirar sin cobertura.
+Si algo no se puede valorar, la app lo dice y **no** inventa el total: una cartera a medio
+valorar daría un número falso.
 
-**Añadir posiciones.** Cada una necesita su identificador y la cantidad. Para un fondo, el ISIN
-(12 caracteres: dos letras de país, nueve y un dígito) y las participaciones. Para una acción o
-un ETF, su ticker. Con más de dos o tres posiciones, pegar la tabla sale mucho más a cuenta que
-añadirlas una a una.
+#### Aportaciones periódicas
 
-**Lo que esta app no hace** es decirte qué comprar. Calcula sobre tus datos; no opina sobre el
-mercado.
+Quien aporta todos los meses acumula decenas de apuntes iguales, y teclearlos uno a uno es justo
+la razón por la que luego no hay historial con el que calcular nada. Al añadir una aportación se
+puede elegir **Periódica**: importe, cada cuánto, desde cuándo y hasta cuándo. La
+previsualización dice cuántas salen y cuánto suman, para poder cuadrarlo con lo que el banco
+llame «invertido» antes de guardar.
+
+El día del mes se conserva: quien aporta el 31 sigue aportando el 31, y en los meses que no lo
+tienen cae en el último día sin arrastrar el desfase a los siguientes.
+
+#### El simulador
+
+No mira tus datos: proyecta una regla de ahorro. Pide cuatro cosas —aportación mensual, capital
+inicial, años y nada más— y detrás de «Más supuestos» esconde la inflación y la subida anual de
+la aportación.
+
+Tres decisiones deliberadas, todas en la misma dirección:
+
+- **Tres escenarios etiquetados por su supuesto**, no una banda de confianza. La gente lee los
+  extremos de una barra de error como el mínimo y el máximo reales, y no lo son. «Si rindiera un
+  6% al año» no se puede malinterpretar así, porque el supuesto está escrito en la propia fila.
+- **Redondeado a miles.** «91.000 €», nunca «90.947,31 €». La falsa precisión es lo que crea la
+  falsa certeza.
+- **El desglose de dónde sale el dinero**: cuánto pones tú y cuánto pone el interés compuesto.
+  Es el número que convence, y además es cierto por construcción.
+
+Los porcentajes son fijos y declarados, no derivados del histórico reciente. Derivarlos de datos
+recientes es lo que hace que los escenarios regulatorios den absurdos en ambos sentidos.
+
+Y la pestaña vacía abre el simulador, no un formulario de alta: para quien todavía no invierte,
+el simulador *es* la puerta de entrada.
+
+#### Qué dicen tus números
+
+Un bloque en la pantalla principal con lo que se puede afirmar con certeza mirando los datos
+propios. No recomienda productos ni opina sobre el mercado. Cuando compara con una regla
+conocida, cita la regla, para que quede claro que es una referencia ajena y no un juicio de la
+app. Cada hallazgo aparece solo si hay datos suficientes para que sea cierto: es preferible una
+pantalla con dos cosas verdaderas que con seis de relleno.
+
+| Hallazgo | Qué dice |
+|---|---|
+| **Coste** | Lo que pagas al año en comisiones, y lo que esas comisiones se llevarían en veinte años |
+| **Concentración** | Si más del 60% está en un solo producto |
+| **Tasa de inversión** | Qué parte de lo que ingresas acaba invertida, con la regla del 50/30/20 como referencia |
+| **Constancia** | Meses sin aportar en el último año |
+| **Coste de retirar** | Lo que pagarías de IRPF si lo vendieras todo hoy |
+| **Datos viejos** | Productos que llevan más de mes y medio sin actualizar |
+
+La tasa de inversión es la que esta app puede calcular y una app de cartera no: aquí están las
+dos mitades, lo que entra y lo que se invierte. El ingreso sale de la media de los últimos seis
+meses de Finanzas, y solo aparece si hay al menos tres meses con ingresos registrados.
+
+**Sobre el coste.** quefondos publica la comisión de gestión y la de depósito, pero no los
+gastos corrientes. Lo que sale es por tanto un **suelo**, no el total, y así se dice. La comisión
+de quien gestiona la cartera no está en la ficha de ningún fondo, así que se pone a mano en los
+ajustes del producto. La media es ponderada por valor y solo sobre la parte cuya comisión se
+conoce: extrapolarla al resto sería inventarse el dato.
+
+#### El coste fiscal de retirar
+
+Estima lo que pagarías de IRPF si vendieras todo hoy, con la **escala del ahorro** vigente desde
+el ejercicio 2025 (el tipo máximo subió del 28% al 30%):
+
+| Ganancia | Tipo |
+|---|---|
+| hasta 6.000 | 19% |
+| 6.000 – 50.000 | 21% |
+| 50.000 – 200.000 | 23% |
+| 200.000 – 300.000 | 27% |
+| más de 300.000 | 30% |
+
+Los tramos son **marginales**: cada uno se aplica solo a su parte, no al total. Es estatal y no
+varía por comunidad, salvo Navarra y País Vasco, que tienen la suya.
+
+**Lo que se excluye y por qué.** Cada tipo de producto lleva en qué base tributa:
+
+- **Base del ahorro, sobre la ganancia**: carteras, fondos, ETFs, acciones, cripto. Son los que
+  entran en el cálculo.
+- **Base general, sobre el total rescatado**: planes de pensiones. No es que paguen sobre la
+  ganancia a otro tipo, es que pagan sobre **todo** lo que saques, como rendimiento del trabajo,
+  a tu tipo marginal. Mezclarlos daría un número muy equivocado, así que quedan fuera y se dice
+  cuáles son.
+- **Reglas que no caben en una estimación simple**: inmuebles y la categoría «otro». Fuera
+  también.
+
+El cálculo supone una **venta total**, que es el único caso exacto con los datos que guarda la
+app: para un reembolso parcial, los fondos tributan por orden de antigüedad (FIFO) y haría falta
+guardar cada compra por separado. También supone que no hay otras ganancias ni pérdidas ese año,
+que se suman a la misma base y pueden cambiar de tramo.
+
+Y una cosa que conviene saber y es puro hecho: **traspasar entre fondos no tributa en España**.
+Solo se paga al reembolsar.
+
+Nada de esto es asesoramiento fiscal, y el aviso lo dice.
+
+#### Cada cuánto se actualizan los valores
+
+Depende del modo, y es la diferencia práctica entre los dos:
+
+- **Valor a mano**: nunca solo. Cambia cuando anotas un valor.
+- **Precios automáticos**: se piden **al abrir la pestaña**, si la copia guardada tiene más de
+  doce horas. No hace falta pulsar nada; el botón sigue ahí para forzarlo.
+
+Doce horas y no menos porque el valor liquidativo se publica una vez al día: pedirlo más a
+menudo devuelve exactamente lo mismo y carga a un servicio ajeno. Si la petición falla no se
+insiste en cada repintado, solo una vez por hora.
+
+Que los precios estén al día no significa que el valor lo esté: los **títulos** son los del
+último extracto que pegaste. Por eso existe el aviso de desfase.
+
+#### Efectivo sin invertir
+
+Las cuentas de inversión suelen tener un saldo pequeño sin colocar. En los ajustes del producto
+hay un campo para él, y se suma al valor cuando los precios se buscan solos. Sin eso el total de
+la app no cuadra con el del banco por unos euros, y dos números que no cuadran hacen desconfiar
+de los dos.
+
+#### Modo discreto
+
+En Ajustes se pueden ocultar todos los importes de un toque, para abrir la app en el metro o
+enseñarle algo a alguien sin que vea cuánto tienes. Los datos no se tocan: solo dejan de verse.
+Es local al dispositivo y no viaja en la sincronización.
+
+Está hecho con una clase en `<html>` y una regla de CSS sobre `.num`, así que **toda cantidad
+que se pinte tiene que llevar esa clase**. Para los importes dentro de una frase existen `eurN()`
+y `eurN0()`, que devuelven el importe ya envuelto; `eur()` y `eur0()` se reservan para los textos
+planos, donde el marcado se vería literal. Hay una prueba que recorre todas las pantallas con el
+modo encendido y falla si queda algún importe legible.
+
+#### Lo que esta app no hace
+
+No te dice qué comprar. Calcula sobre tus datos; no opina sobre el mercado.
 
 ### El mes contable
 
@@ -894,12 +1046,12 @@ Las rutas antiguas `/gastos` y `/borrados` siguen funcionando como alias de
 
 ### `GET|POST /vl`
 
-Valor liquidativo de uno o varios fondos por ISIN. Por GET, `?isin=IE00B1G3DH73,IE00B246KL88`;
-por POST, `{"isin": ["IE00B1G3DH73"]}`. Añade `?forzar=1` para saltarse la caché.
+Valor liquidativo de uno o varios fondos por ISIN, o precio por ticker. Por GET,
+`?isin=LU0000000000,AAPL`; por POST, `{"isin": ["LU0000000000"]}`. Añade `?forzar=1` para saltarse la caché.
 
 ```json
-{ "vl": { "IE00BDZVHT63": { "nav": 8.2229, "moneda": "USD", "navEur": 7.3255, "tasa": 0.89087,
-                            "fecha": "2026-10-01", "nom": "MSCI PACIFIC EX JAPAN...",
+{ "vl": { "LU0000000000": { "nav": 8.2229, "moneda": "USD", "navEur": 7.3255, "tasa": 0.89087,
+                            "fecha": "2026-10-01", "nom": "FONDO DE EJEMPLO",
                             "fuente": "quefondos", "cacheado": false } },
   "pedido": 1759600000000 }
 ```

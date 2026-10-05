@@ -16,6 +16,11 @@ const K = {
 
 /* ---------- Utilidades ---------- */
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+/* Importes en prosa: van envueltos para que el modo discreto los tape igual
+   que las cifras de las tarjetas. En textos planos (avisos, title) usa eur(). */
+export const eurN  = n => `<span class="num">${eur(n)}</span>`;
+export const eurN0 = n => `<span class="num">${eur0(n)}</span>`;
+
 export const eur  = n => n.toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
 export const eur0 = n => Math.round(n).toLocaleString('es-ES') + ' €';
 export const escapar = s => String(s ?? '').replace(/[<>&"]/g,
@@ -162,6 +167,20 @@ export function fijarTema(t) {
   ajuste('tema', t === 'auto' ? null : t);
   aplicarTema(t);
 }
+
+/* ---------- Modo discreto ----------
+   Oculta los importes sin tocar los datos, para poder abrir la app con alguien
+   al lado. Se aplica con una clase en <html> y lo tapa el CSS: así no hay que
+   acordarse de nada en cada sitio donde se pinta una cifra. */
+export const discreto = () => !!ajuste('discreto');
+export function alternarDiscreto() {
+  const v = !discreto();
+  ajuste('discreto', v || null);
+  document.documentElement.classList.toggle('discreto', v);
+  return v;
+}
+export const aplicarDiscreto = () =>
+  document.documentElement.classList.toggle('discreto', discreto());
 
 /* ---------- Navegación ----------
    app.js registra aquí su función de cambiar de módulo, para que finanzas o

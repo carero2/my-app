@@ -1,17 +1,15 @@
 /* ==========================================================================
    Inversiones: cálculo.
 
-   Una cartera se sigue de una de tres maneras, según lo que puedas conseguir:
+   Un producto es una lista de movimientos: lo que metes, lo que sacas y cuánto
+   valía en una fecha. De ahí sale todo lo demás. Hay dos maneras de saber lo
+   que vale, y la primera funciona desde el primer día:
 
-     auto      · apuntas las participaciones de cada fondo por su ISIN y el
-                 Worker busca el valor liquidativo. Es lo más fiel, pero si tu
-                 cartera la rebalancea un gestor automático tendrás que volver
-                 a teclear las participaciones cada vez que lo haga.
-     manual    · apuntas tú el valor total cuando te apetece mirarlo. Mucho
-                 menos trabajo y, para una cartera gestionada, casi igual de
-                 útil: el banco ya te da ese número hecho.
-     estimado  · no hay valor real; se proyecta lo aportado a un interés anual
-                 que tú fijas. Sirve para hacerse una idea, no para saber.
+     manual · apuntas tú el valor total cuando lo consultes. Para una cartera
+              gestionada, un plan de pensiones o un piso es lo único posible, y
+              además el banco ya te da ese número hecho.
+     auto   · apuntas las posiciones por su ISIN o su ticker y se busca el
+              precio solo. Más fiel, pero hay que mantener las posiciones.
 
    La rentabilidad se calcula con TIR y no con la regla de tres de
    (valor − aportado) / aportado, que con aportaciones repartidas en el tiempo
@@ -20,20 +18,71 @@
    ========================================================================== */
 import {
   datos, anadir, actualizar, borrar, ajuste, enLote,
-  dia, desdeDia, eur, escapar, nube, avisar, emitir,
+  dia, desdeDia, eur, eur0, escapar, nube, avisar, emitir,
 } from './nucleo.js';
 
 export const MODOS = {
-  auto:     { nom:'Precios automáticos', ayuda:'Apuntas participaciones por ISIN y se buscan solos' },
-  manual:   { nom:'Valor a mano',        ayuda:'Apuntas tú el valor total cuando lo consultes' },
-  estimado: { nom:'Estimación',          ayuda:'Sin datos reales: proyecta lo aportado a un interés anual' },
+  manual: { nom:'Valor a mano',        ayuda:'Apuntas tú el valor total cuando lo consultes' },
+  auto:   { nom:'Precios automáticos', ayuda:'Apuntas las posiciones y se busca su precio solo' },
 };
+
+/* El tipo no cambia el cálculo: todo producto se reduce a valor actual y coste
+   acumulado. Solo decide cómo se etiqueta y si el dinero es disponible o no.
+   Un plan de pensiones vale lo que vale, pero no puedes contar con él mañana. */
+/* `fiscal` dice en qué base tributa lo que saques, que no es un detalle menor:
+   un fondo paga sobre la ganancia en la base del ahorro, y un plan de pensiones
+   paga sobre TODO lo rescatado como rendimiento del trabajo. Mezclarlos daría
+   un número muy equivocado, así que cada uno va por su lado.
+     ahorro  · base del ahorro, sobre la ganancia (escala de abajo)
+     trabajo · base general, sobre el total rescatado
+     otro    · tributa, pero con reglas que no caben en una estimación simple */
+export const TIPOS_PROD = {
+  cartera:  { nom:'Cartera gestionada', liquido:true,  fiscal:'ahorro' },
+  fondo:    { nom:'Fondo o ETF',        liquido:true,  fiscal:'ahorro' },
+  acciones: { nom:'Acciones',           liquido:true,  fiscal:'ahorro' },
+  pension:  { nom:'Plan de pensiones',  liquido:false, fiscal:'trabajo' },
+  cripto:   { nom:'Criptomonedas',      liquido:true,  fiscal:'ahorro' },
+  inmueble: { nom:'Inmueble',           liquido:false, fiscal:'otro' },
+  otro:     { nom:'Otro',               liquido:true,  fiscal:'otro' },
+};
+
+/* ---------- Escala del ahorro del IRPF ----------
+   Vigente desde el ejercicio 2025: el tipo máximo subió del 28% al 30%.
+   Es estatal y no varía por comunidad, salvo Navarra y País Vasco, que tienen
+   la suya. Los tramos son marginales: cada uno se aplica solo a su parte. */
+export const TRAMOS_AHORRO = [
+  { hasta: 6000,     pct: 19 },
+  { hasta: 50000,    pct: 21 },
+  { hasta: 200000,   pct: 23 },
+  { hasta: 300000,   pct: 27 },
+  { hasta: Infinity, pct: 30 },
+];
+
+export function impuestoAhorro(ganancia) {
+  if (!(ganancia > 0)) return 0;
+  let queda = ganancia, suelo = 0, total = 0;
+  for (const t of TRAMOS_AHORRO) {
+    const trozo = Math.min(queda, t.hasta - suelo);
+    if (trozo <= 0) break;
+    total += trozo * t.pct / 100;
+    queda -= trozo;
+    suelo = t.hasta;
+  }
+  return Math.round(total * 100) / 100;
+}
+
+/** El tipo medio que sale de esa escala, que es el número que se entiende. */
+export const tipoMedioAhorro = ganancia =>
+  ganancia > 0 ? (impuestoAhorro(ganancia) / ganancia) * 100 : 0;
+export const tipoDe = p => (TIPOS_PROD[p?.tipo] ? p.tipo : 'cartera');
 export const PALETA_INV = ['#3E6FA8','#4E8A5B','#7A5BA6','#D98A2B','#2F8C8C','#C7513F'];
 
 const orden = (a, b) => (a.t || 0) - (b.t || 0);
 
-export const carteras = () => datos.inversiones.filter(c => !c.archivada).sort(orden);
-export const cartera  = id => datos.inversiones.find(c => c.id === id) || null;
+export const productos = () => datos.inversiones.filter(c => !c.archivada).sort(orden);
+export const producto  = id => datos.inversiones.find(c => c.id === id) || null;
+/* Nombres viejos, por si quedara algo apuntando a ellos. */
+export const carteras = productos, cartera = producto;
 export const modoDe   = c => (MODOS[c?.modo] ? c.modo : 'manual');
 
 /* ---------- Movimientos de una cartera ----------
@@ -149,10 +198,12 @@ export function desfase(invId) {
 /* ---------- Valor actual, según el modo ---------- */
 export function valorActual(invId) {
   const c = cartera(invId); if (!c) return null;
-  const modo = modoDe(c);
-  if (modo === 'auto')     return valorPorPosiciones(invId) ?? ultimoValor(invId);
-  if (modo === 'estimado') return proyectar(invId, Date.now());
-  return ultimoValor(invId);
+  if (modoDe(c) !== 'auto') return ultimoValor(invId);
+  const v = valorPorPosiciones(invId);
+  if (v === null) return ultimoValor(invId);
+  /* El efectivo sin invertir de la cuenta también es tuyo: sin él, el total de
+     la app no cuadra con el que enseña el banco y se desconfía de los dos. */
+  return Math.round((v + (c.efectivo || 0)) * 100) / 100;
 }
 
 export function ultimoValor(invId) {
@@ -172,17 +223,6 @@ export function fechaValor(invId) {
   return v.length ? dia(v[v.length - 1].t) : null;
 }
 
-/** Proyección a interés compuesto: cada aportación crece desde su propia fecha. */
-export function proyectar(invId, cuando = Date.now()) {
-  const c = cartera(invId); if (!c) return null;
-  const r = (c.pct ?? 0) / 100;
-  let total = 0;
-  for (const m of aportes(invId)) {
-    const anios = (cuando - m.t) / (365.25 * 86400000);
-    total += (m.c || 0) * Math.pow(1 + r, Math.max(0, anios));
-  }
-  return Math.round(total * 100) / 100;
-}
 
 /* ---------- Rentabilidad ----------
    TIR por bisección. Se evita Newton a propósito: converge más rápido pero se
@@ -225,8 +265,7 @@ export function rentabilidad(invId) {
    Dos líneas: lo que has puesto y lo que vale. La distancia entre ambas es la
    plusvalía, que es justo lo que se quiere ver de un vistazo. */
 export function serie(invId, meses = 12) {
-  const c = cartera(invId); if (!c) return [];
-  const modo = modoDe(c);
+  const c = producto(invId); if (!c) return [];
   const ap = aportes(invId);
   if (!ap.length) return [];
 
@@ -237,12 +276,8 @@ export function serie(invId, meses = 12) {
     const ms = Math.min(corte.getTime(), Date.now());
     const puesto = ap.filter(m => m.t <= ms).reduce((s, m) => s + m.c, 0);
     if (!puesto && !puntos.length) continue;                 // antes de empezar, nada que pintar
-    let vale;
-    if (modo === 'estimado') vale = proyectarHasta(invId, ms);
-    else {
-      const antes = valoraciones(invId).filter(m => m.t <= ms);
-      vale = antes.length ? antes[antes.length - 1].c : null;
-    }
+    const antes = valoraciones(invId).filter(m => m.t <= ms);
+    const vale = antes.length ? antes[antes.length - 1].c : null;
     puntos.push({ ms, etq: corte.toLocaleDateString('es-ES', { month:'short' }).replace('.', ''),
       puesto: Math.round(puesto * 100) / 100,
       vale: vale === null ? null : Math.round(vale * 100) / 100 });
@@ -255,26 +290,377 @@ export function serie(invId, meses = 12) {
   return puntos;
 }
 
-const proyectarHasta = (invId, ms) => {
-  const c = cartera(invId);
-  const r = (c.pct ?? 0) / 100;
-  return Math.round(aportes(invId).filter(m => m.t <= ms).reduce((s, m) =>
-    s + m.c * Math.pow(1 + r, Math.max(0, (ms - m.t) / (365.25 * 86400000))), 0) * 100) / 100;
-};
 
-/* ---------- Altas y bajas ---------- */
-export function crearCartera(datosNuevos) {
-  const usados = carteras().map(c => c.color);
-  const color = PALETA_INV.find(c => !usados.includes(c)) || PALETA_INV[0];
-  return anadir('inversiones', { nom: 'Mi cartera', modo: 'manual', color, ...datosNuevos });
+/* ---------- Aportaciones periódicas ----------
+   Quien aporta todos los meses lleva decenas de apuntes iguales, y teclearlos
+   uno a uno es la razón por la que luego no hay historial con el que calcular
+   nada. Se generan de golpe a partir de la regla.
+
+   El día del mes se conserva: quien aporta el 31 sigue aportando el 31, salvo
+   en los meses que no lo tienen, donde cae en el último. */
+export function seriePeriodica({ c, cada = 'mes', desde, hasta = Date.now() }) {
+  const salida = [];
+  if (!isFinite(c) || c === 0 || !desde) return salida;
+  const ini = new Date(desde), fin = new Date(hasta);
+  if (ini > fin) return salida;
+  const diaMes = ini.getDate();
+  let i = 0;
+  while (i < 600) {                       // tope de cordura: 50 años mensuales
+    let f;
+    if (cada === 'semana')      { f = new Date(ini); f.setDate(f.getDate() + 7 * i) }
+    else if (cada === 'trimestre' || cada === 'mes') {
+      const saltos = cada === 'trimestre' ? 3 * i : i;
+      const base = new Date(ini.getFullYear(), ini.getMonth() + saltos, 1);
+      const ultimo = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+      f = new Date(base.getFullYear(), base.getMonth(), Math.min(diaMes, ultimo));
+    } else if (cada === 'anio') {
+      f = new Date(ini.getFullYear() + i, ini.getMonth(), 1);
+      const ultimo = new Date(f.getFullYear(), f.getMonth() + 1, 0).getDate();
+      f.setDate(Math.min(diaMes, ultimo));
+    } else break;
+    if (f > fin) break;
+    salida.push({ t: f.getTime(), c });
+    i++;
+  }
+  return salida;
 }
 
-export function borrarCartera(id) {
+/* ---------- Altas y bajas ---------- */
+export function crearProducto(datosNuevos) {
+  const usados = productos().map(c => c.color);
+  const color = PALETA_INV.find(c => !usados.includes(c)) || PALETA_INV[0];
+  return anadir('inversiones', {
+    nom: 'Mi producto', modo: 'manual', tipo: 'cartera', color, ...datosNuevos });
+}
+export const crearCartera = crearProducto;
+
+export function borrarProducto(id) {
   enLote(() => {
     datos.invmov.filter(m => m.inv === id).forEach(m => borrar('invmov', m.id));
     datos.posiciones.filter(p => p.inv === id).forEach(p => borrar('posiciones', p.id));
     borrar('inversiones', id);
   });
+}
+export const borrarCartera = borrarProducto;
+
+/* ==========================================================================
+   Agregado de todos los productos
+
+   La pantalla principal no es la suma de pantallas de producto: es una sola
+   pregunta, «cuánto tengo y he ganado dinero». Para responderla hace falta
+   sumar valores, sumar aportaciones y calcular una TIR con todos los flujos
+   juntos, que no es la media de las TIR de cada uno.
+   ========================================================================== */
+
+/** Suma de lo que vale todo. Si falta el valor de alguno, se dice cuál para no
+ *  enseñar un total que parece completo y no lo está. */
+export function resumenGlobal() {
+  const ps = productos();
+  let valor = 0, puesto = 0, liquido = 0;
+  const sinValor = [];
+  for (const p of ps) {
+    puesto += invertido(p.id);
+    const v = valorActual(p.id);
+    if (v === null) { sinValor.push(p); continue }
+    valor += v;
+    if (TIPOS_PROD[tipoDe(p)].liquido) liquido += v;
+  }
+  return {
+    n: ps.length,
+    valor: ps.length ? Math.round(valor * 100) / 100 : null,
+    puesto: Math.round(puesto * 100) / 100,
+    liquido: Math.round(liquido * 100) / 100,
+    plus: ps.length ? Math.round((valor - puesto) * 100) / 100 : null,
+    sinValor,
+  };
+}
+
+/** TIR de todo el patrimonio invertido: todos los flujos en una sola cuenta. */
+export function rentabilidadGlobal() {
+  const ps = productos();
+  if (!ps.length) return null;
+  const flujos = [];
+  let valor = 0;
+  for (const p of ps) {
+    const v = valorActual(p.id);
+    if (v === null) return null;              // sin un valor, la TIR sería falsa
+    valor += v;
+    for (const m of aportes(p.id)) flujos.push({ t: m.t, c: -m.c });
+  }
+  if (!flujos.length) return null;
+  const desde = Math.min(...flujos.map(f => f.t));
+  if (Date.now() - desde < 60 * 86400000) return null;
+  const r = tir([...flujos, { t: Date.now(), c: valor }]);
+  return r === null ? null : Math.round(r * 1000) / 10;
+}
+
+/** La serie de todos los productos, mes a mes, para la gráfica del agregado. */
+export function serieGlobal(meses = 12) {
+  const ps = productos();
+  if (!ps.length) return [];
+  const series = ps.map(p => serie(p.id, meses));
+  const largo = Math.max(...series.map(s => s.length), 0);
+  if (!largo) return [];
+  const salida = [];
+  for (let i = 0; i < largo; i++) {
+    let puesto = 0, vale = 0, hayValor = false;
+    let etq = '';
+    for (const s of series) {
+      /* Cada producto puede tener menos historia: se alinean por el final. */
+      const j = i - (largo - s.length);
+      if (j < 0) continue;
+      puesto += s[j].puesto || 0;
+      if (s[j].vale !== null) { vale += s[j].vale; hayValor = true }
+      etq = s[j].etq;
+    }
+    salida.push({ etq, puesto: Math.round(puesto * 100) / 100,
+      vale: hayValor ? Math.round(vale * 100) / 100 : null });
+  }
+  return salida;
+}
+
+/* ==========================================================================
+   Simulador
+
+   No proyecta tu cartera: proyecta una regla de ahorro. Y lo hace con tres
+   supuestos etiquetados en vez de con un número único, porque un «tendrás
+   83.000 €» con dos decimales es una promesa que nadie puede cumplir.
+   ========================================================================== */
+
+export const ESCENARIOS = [
+  { pct: 3, nom: 'Prudente' },
+  { pct: 6, nom: 'Intermedio' },
+  { pct: 9, nom: 'Optimista' },
+];
+
+/** Interés compuesto con aportaciones al final de cada mes. */
+export function simular({ inicial = 0, mensual = 0, anios = 10, pct = 6, subida = 0,
+                          inflacion = 0 }) {
+  const meses = Math.max(0, Math.round(anios * 12));
+  const r = Math.pow(1 + pct / 100, 1 / 12) - 1;       // tasa mensual equivalente
+  let saldo = inicial, puesto = inicial, cuota = mensual;
+  for (let m = 1; m <= meses; m++) {
+    saldo = saldo * (1 + r) + cuota;
+    puesto += cuota;
+    if (subida && m % 12 === 0) cuota *= 1 + subida / 100;
+  }
+  /* En euros de hoy: lo que de verdad vas a poder comprar con ese dinero. */
+  const deflactor = inflacion ? Math.pow(1 + inflacion / 100, anios) : 1;
+  return {
+    total: saldo,
+    puesto,
+    interes: saldo - puesto,
+    hoy: saldo / deflactor,
+  };
+}
+
+/** Lo que cuesta empezar más tarde: el mismo cálculo con menos años. */
+export function costeDeEsperar(params, anios = 2) {
+  const ahora = simular(params);
+  const luego = simular({ ...params, anios: Math.max(0, params.anios - anios) });
+  return { ahora: ahora.total, luego: luego.total, coste: ahora.total - luego.total };
+}
+
+/* ==========================================================================
+   Análisis
+
+   Esto no recomienda productos ni opina sobre el mercado: solo dice lo que se
+   puede afirmar con certeza mirando los datos del usuario. Cuando se compara
+   con una regla conocida, se cita la regla, para que quede claro que es una
+   referencia ajena y no un juicio de la app.
+
+   Cada hallazgo solo aparece si hay datos suficientes para que sea cierto. Es
+   preferible una pantalla con dos cosas verdaderas que con seis de relleno.
+   ========================================================================== */
+
+/* Las cantidades del análisis se envuelven para que el modo discreto las tape
+   igual que las de cualquier otra pantalla. */
+const cifra = n => `<span class="num">${eur0(n)}</span>`;
+
+/** Comisiones conocidas de un producto, en % anual sobre el valor.
+ *  Las de los fondos salen de su ficha; la de la plataforma la pone el usuario,
+ *  porque no está publicada en ninguna parte que se pueda consultar. */
+export function comisionDe(invId) {
+  const p = producto(invId); if (!p) return null;
+  const extra = isFinite(p.comision) ? p.comision : null;
+  if (modoDe(p) !== 'auto') return extra;
+
+  const total = valorPorPosiciones(invId);
+  if (!total) return extra;
+  let suma = 0, cubierto = 0;
+  for (const x of posicionesDe(invId)) {
+    const v = vlDe(x.isin);
+    const val = (x.part || 0) * (navEurDe(x.isin) || 0);
+    if (!val) continue;
+    if (v?.comision === null || v?.comision === undefined) continue;
+    suma += v.comision * val;
+    cubierto += val;
+  }
+  if (!cubierto) return extra;
+  /* Media ponderada solo sobre lo que se conoce: extrapolar al resto sería
+     inventarse el dato de los fondos que no lo publican. */
+  const fondos = suma / cubierto;
+  return Math.round((fondos + (extra || 0)) * 1000) / 1000;
+}
+
+/** Qué parte del valor está cubierta por comisiones conocidas. */
+export function coberturaComision(invId) {
+  const p = producto(invId);
+  if (!p || modoDe(p) !== 'auto') return 1;
+  const total = valorPorPosiciones(invId);
+  if (!total) return 0;
+  const con = posicionesDe(invId).reduce((s, x) => {
+    const v = vlDe(x.isin);
+    const val = (x.part || 0) * (navEurDe(x.isin) || 0);
+    return s + (v && v.comision !== null && v.comision !== undefined ? val : 0);
+  }, 0);
+  return con / total;
+}
+
+/** Regularidad de las aportaciones del último año. */
+function ritmo(invId) {
+  const ap = aportes(invId).filter(m => m.c > 0);
+  if (ap.length < 4) return null;
+  const hace = Date.now() - 365 * 86400000;
+  const recientes = ap.filter(m => m.t >= hace);
+  if (recientes.length < 3) return null;
+  const meses = new Set(recientes.map(m =>
+    new Date(m.t).getFullYear() + '-' + new Date(m.t).getMonth())).size;
+  const transcurridos = Math.min(12, Math.ceil(
+    (Date.now() - Math.min(...recientes.map(m => m.t))) / (30.44 * 86400000)));
+  return { meses, transcurridos, huecos: Math.max(0, transcurridos - meses) };
+}
+
+/** Los hallazgos, en orden de importancia. */
+export function analisis({ ingresoMensual = null } = {}) {
+  const ps = productos();
+  const salida = [];
+  if (!ps.length) return salida;
+
+  const g = resumenGlobal();
+
+  /* --- Lo que cuestan las comisiones --- */
+  const conComision = ps.map(p => ({ p, c: comisionDe(p.id), v: valorActual(p.id) }))
+    .filter(x => x.c !== null && x.v);
+  if (conComision.length) {
+    const valorCubierto = conComision.reduce((s, x) => s + x.v, 0);
+    const media = conComision.reduce((s, x) => s + x.c * x.v, 0) / valorCubierto;
+    const alAnio = valorCubierto * media / 100;
+    /* A veinte años, sobre el valor de hoy creciendo al 6%: lo que se queda la
+       comisión por el camino. Es la comparación que hace entender el número. */
+    const bruto = valorCubierto * Math.pow(1.06, 20);
+    const neto  = valorCubierto * Math.pow(1.06 - media / 100, 20);
+    salida.push({
+      id: 'comisiones', tono: 'info',
+      titulo: `Te cuesta el ${media.toLocaleString('es-ES', {
+        minimumFractionDigits: 2, maximumFractionDigits: 2 })}% al año`,
+      texto: `Sobre ${cifra(valorCubierto)} son unos ${cifra(alAnio)} al año. Si ese dinero `
+           + `creciera al 6% durante veinte años, las comisiones se llevarían `
+           + `${cifra(bruto - neto)} por el camino.`,
+      nota: 'Son las comisiones de gestión y depósito publicadas, más la de plataforma que '
+          + 'hayas puesto tú. Los gastos corrientes reales suelen ser algo mayores, así que '
+          + 'esto es un suelo.',
+    });
+  }
+
+  /* --- Concentración --- */
+  if (g.valor) {
+    const partes = ps.map(p => ({ p, v: valorActual(p.id) || 0 }))
+      .sort((a, b) => b.v - a.v);
+    const top = partes[0];
+    const pct = Math.round((top.v / g.valor) * 100);
+    if (ps.length > 1 && pct >= 60) salida.push({
+      id: 'concentracion', tono: 'aviso',
+      titulo: `${pct}% está en un solo producto`,
+      texto: `${escapar(top.p.nom)} concentra ${cifra(top.v)} de los ${cifra(g.valor)} `
+           + 'que tienes.',
+      nota: 'No es ni bueno ni malo por sí mismo: depende de qué haya dentro de ese producto. '
+          + 'Pero conviene saberlo.',
+    });
+  }
+
+  /* --- Qué parte de lo que ingresas acaba invertida --- */
+  if (ingresoMensual > 0) {
+    const hace = Date.now() - 365 * 86400000;
+    const delAnio = ps.flatMap(p => aportes(p.id)).filter(m => m.t >= hace && m.c > 0);
+    if (delAnio.length >= 3) {
+      const primero = Math.min(...delAnio.map(m => m.t));
+      const meses = Math.max(1, (Date.now() - primero) / (30.44 * 86400000));
+      const alMes = delAnio.reduce((s, m) => s + m.c, 0) / meses;
+      const tasa = (alMes / ingresoMensual) * 100;
+      salida.push({
+        id: 'tasa', tono: 'info',
+        titulo: `Inviertes el ${Math.round(tasa)}% de lo que ingresas`,
+        texto: `Unos ${cifra(alMes)} al mes de los ${cifra(ingresoMensual)} que entran.`,
+        nota: 'Como referencia ajena: la regla del 50/30/20 reserva un 20% para ahorro e '
+            + 'inversión. Es una regla general, no una medida de si lo estás haciendo bien.',
+      });
+    }
+  }
+
+  /* --- Lo que costaría sacarlo --- */
+  const delAhorro = ps.filter(p => TIPOS_PROD[tipoDe(p)].fiscal === 'ahorro');
+  if (delAhorro.length) {
+    let valor = 0, puesto = 0, completo = true;
+    for (const p of delAhorro) {
+      const v = valorActual(p.id);
+      if (v === null) { completo = false; continue }
+      valor += v; puesto += invertido(p.id);
+    }
+    const ganancia = valor - puesto;
+    if (completo && ganancia > 0) {
+      const cuota = impuestoAhorro(ganancia);
+      const tipo = tipoMedioAhorro(ganancia);
+      const fuera = ps.filter(p => TIPOS_PROD[tipoDe(p)].fiscal !== 'ahorro');
+      salida.push({
+        id: 'fiscal', tono: 'info',
+        titulo: `Sacarlo todo hoy costaría unos ${cifra(cuota)}`,
+        texto: `La ganancia sería ${cifra(ganancia)} y te quedarían `
+             + `${cifra(valor - cuota)}. Sale a un ${tipo.toLocaleString('es-ES',
+               { maximumFractionDigits: 1 })}% de media sobre la ganancia.`,
+        nota: 'Estimación con la escala del ahorro del IRPF: 19% hasta 6.000, 21% hasta '
+            + '50.000, 23% hasta 200.000, 27% hasta 300.000 y 30% por encima, en euros de '
+            + 'ganancia. Supone que '
+            + 'vendes todo de golpe y que no tienes otras ganancias ni pérdidas ese año, que '
+            + 'se suman a la misma base y pueden cambiar el tramo. Navarra y País Vasco tienen '
+            + 'su propia escala. '
+            + (fuera.length ? `No incluye ${fuera.map(p => escapar(p.nom)).join(', ')}, que `
+              + 'tributa de otra forma. ' : '')
+            + 'Traspasar entre fondos no tributa en España: solo se paga al reembolsar. '
+            + 'Esto no es asesoramiento fiscal.',
+      });
+    }
+  }
+
+  /* --- Constancia --- */
+  for (const p of ps) {
+    const r = ritmo(p.id);
+    if (r && r.huecos >= 2) {
+      salida.push({
+        id: 'ritmo-' + p.id, tono: 'aviso',
+        titulo: `${r.huecos} meses sin aportar a ${escapar(p.nom)}`,
+        texto: `En los últimos ${r.transcurridos} meses has aportado en ${r.meses}.`,
+        nota: 'Si fue a propósito, ignóralo. Si no, puede que se te pasara alguna.',
+      });
+      break;                                  // con avisar de uno basta
+    }
+  }
+
+  /* --- Datos viejos --- */
+  const viejos = ps.filter(p => {
+    const f = fechaValor(p.id);
+    if (!f) return false;
+    return Date.now() - desdeDia(f).getTime() > 45 * 86400000;
+  });
+  if (viejos.length) salida.push({
+    id: 'viejo', tono: 'aviso',
+    titulo: viejos.length === 1
+      ? `${escapar(viejos[0].nom)} lleva más de mes y medio sin actualizar`
+      : `${viejos.length} productos llevan más de mes y medio sin actualizar`,
+    texto: 'El valor que ves es el de la última vez que lo anotaste, no el de hoy.',
+  });
+
+  return salida;
 }
 
 /* ---------- Reparto actual, para ver la concentración ---------- */
@@ -299,7 +685,7 @@ export function reparto(invId) {
 
    Ojo a los decimales: hay extractos donde los títulos llevan el punto como
    separador decimal (3.52 participaciones) mientras los importes de la misma
-   tabla llevan la coma (184,8400 €). Se mira cuál es el último separador de
+   tabla llevan la coma (1.234,5600 €). Se mira cuál es el último separador de
    cada número en vez de asumir una convención. */
 const ISIN_RE = /\b([A-Z]{2}[A-Z0-9]{9}\d)\b/g;
 /* Palabras cortas en mayúsculas que aparecen en cualquier extracto y que no son
@@ -332,7 +718,7 @@ export function leerPosiciones(texto) {
 
     /* El primer importe con divisa marca dónde acaban los títulos: lo que haya
        antes y sea número es la cantidad de participaciones. Hace falta porque
-       muchos nombres llevan cifras («S&P 500 INDEX»), y el último número antes
+       muchos nombres de producto llevan cifras, y el último número antes
        del importe es siempre el bueno. */
     const corte = /(\d[\d.,]*)\s*(?:€|\$|£|EUR|USD|GBP)\B/.exec(trozo);
     const cabeza = corte ? trozo.slice(0, corte.index) : trozo;
@@ -344,7 +730,7 @@ export function leerPosiciones(texto) {
     const valor = imps.length ? imps[imps.length - 1] : null;
 
     /* El nombre es lo que queda al quitar la cifra de títulos y el código de
-       divisa. No se quitan todos los dígitos: «S&P 500» los lleva en el nombre. */
+       divisa. No se quitan todos los dígitos: muchos nombres los llevan. */
     let nom = cabeza;
     if (nums.length) {
       const ult = nums[nums.length - 1];

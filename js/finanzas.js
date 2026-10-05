@@ -3,7 +3,7 @@
    ========================================================================== */
 import {
   datos, anadir, actualizar, borrar, restaurar, ajuste, nube, enLote,
-  eur, eur0, escapar, dia, navMes,
+  eur, eur0, eurN, eurN0, escapar, dia, desdeDia, navMes,
   inicioCiclo, finCiclo, nombreCiclo, diasCiclo, cicloDia, rangoCiclo,
   avisar, abrirHoja, cerrarHoja, confirmar, emitir, vacio, irA,
 } from './nucleo.js';
@@ -247,6 +247,8 @@ export function notasFrecuentes(prefijo = '') {
 
 /* ---------- Estado del módulo ---------- */
 let sub = 'anadir', off = 0, filtro = null, busca = '', vistaMet = 'mes', anioOff = 0;
+/* Rango a medida de las métricas. Por defecto, los últimos tres meses. */
+let rangoDesde = null, rangoHasta = null;
 let impMin = '', impMax = '';
 let revisando = false;   // bandeja de gastos compartidos por revisar
 let buffer = '', catSel = null, tipoSel = 'gasto', nota = '', fechaSel = null, editando = null;
@@ -320,7 +322,7 @@ function pintarAnadir(c) {
       <span>${(() => {
         const mal = excedidas().length;
         if (mal) return `<span class="rojo">${mal} categoría${mal===1?'':'s'} pasada${mal===1?'':'s'}</span>`;
-        if (presu) return presu - t >= 0 ? `quedan ${eur0(presu-t)}` : `${eur0(t-presu)} de más`;
+        if (presu) return presu - t >= 0 ? `quedan ${eurN0(presu-t)}` : `${eurN0(t-presu)} de más`;
         return `${delMes(0).length} movimiento${delMes(0).length===1?'':'s'}`;
       })()}</span>
     </div>
@@ -478,7 +480,7 @@ function pintarLista(c) {
       <div class="bandeja">
         <div><b>Por revisar</b>
           <small>${gs.length} gasto${gs.length === 1 ? '' : 's'} de la tarjeta compartida ·
-            tu parte ${eur(total)}</small></div>
+            tu parte ${eurN(total)}</small></div>
         <button id="salirRev" aria-label="Salir de la revisión" data-tip="Salir">✕</button>
       </div>
       <p class="pieNota" style="padding:6px 4px 0">Toca uno para corregirlo; al guardarlo queda
@@ -680,10 +682,15 @@ export function repetir(id) {
 }
 
 function pintarMetricas(c) {
+  if (!rangoDesde) {
+    const d = new Date(); d.setMonth(d.getMonth() - 3);
+    rangoDesde = dia(d.getTime()); rangoHasta = dia();
+  }
   c.innerHTML = `
     <div class="opciones" id="metSegs" style="margin-top:10px">
       <button data-v="mes" aria-pressed="${vistaMet==='mes'}">Mes</button>
       <button data-v="ano" aria-pressed="${vistaMet==='ano'}">Año</button>
+      <button data-v="rango" aria-pressed="${vistaMet==='rango'}">A medida</button>
     </div>
     <div id="metCuerpo"></div>`;
   c.querySelector('#metSegs').onclick = e => {
@@ -691,7 +698,99 @@ function pintarMetricas(c) {
     vistaMet = b.dataset.v; pintarMetricas(c);
   };
   const caja = c.querySelector('#metCuerpo');
-  vistaMet === 'ano' ? pintarAnio(caja) : pintarMes(caja);
+  if (vistaMet === 'ano')   return pintarAnio(caja);
+  if (vistaMet === 'rango') return pintarRango(caja);
+  pintarMes(caja);
+}
+
+/* ---------- Métricas de un periodo cualquiera ----------
+   El mes y el año tienen métricas que solo tienen sentido en ellos (lo que
+   queda de presupuesto, la proyección a fin de mes). Un rango arbitrario no:
+   aquí se enseña lo que se puede calcular de verdad para dos fechas sueltas. */
+function pintarRango(c) {
+  c.innerHTML = `
+    <div class="rango" style="padding:12px 0 4px">
+      <label for="rgD">Desde<input id="rgD" type="date" max="${dia()}" value="${rangoDesde}"></label>
+      <label for="rgH">Hasta<input id="rgH" type="date" max="${dia()}" value="${rangoHasta}"></label>
+    </div>
+    <div class="opciones" id="rgAtajos" style="margin-bottom:4px">
+      <button data-d="30">30 días</button>
+      <button data-d="90">3 meses</button>
+      <button data-d="180">6 meses</button>
+      <button data-d="365">12 meses</button>
+    </div>
+    <div id="rgCuerpo"></div>`;
+
+  /* «30 días» son treinta contando hoy, no treinta y uno: el rango incluye
+     ambos extremos, así que se retrocede uno menos. */
+  const atajo = n => {
+    const d = new Date(); d.setDate(d.getDate() - (n - 1));
+    rangoDesde = dia(d.getTime()); rangoHasta = dia();
+    pintarRango(c);
+  };
+  c.querySelector('#rgAtajos').onclick = e => {
+    const b = e.target.closest('[data-d]'); if (!b) return;
+    atajo(parseInt(b.dataset.d));
+  };
+  c.querySelector('#rgD').onchange = e => { rangoDesde = e.target.value; pintarRango(c) };
+  c.querySelector('#rgH').onchange = e => { rangoHasta = e.target.value; pintarRango(c) };
+
+  const cuerpo = c.querySelector('#rgCuerpo');
+  if (rangoDesde > rangoHasta) {
+    cuerpo.innerHTML = vacio({
+      titulo: 'Las fechas están del revés',
+      cuerpo: 'La fecha de inicio es posterior a la de fin. Cámbialas y saldrán las cuentas.' });
+    return;
+  }
+
+  const a = desdeDia(rangoDesde).getTime();
+  const b = desdeDia(rangoHasta).getTime() + 86399999;
+  const gs = datos.gastos.filter(g => g.t >= a && g.t <= b);
+  /* Se mide de inicio de día a inicio de día: contar hasta el final del último
+     da 0,99999 días de más, que al redondear se convierte en uno entero. */
+  const dias = Math.round(
+    (desdeDia(rangoHasta).getTime() - a) / 86400000) + 1;
+
+  if (!gs.length) {
+    cuerpo.innerHTML = vacio({
+      titulo: 'Sin movimientos en esas fechas',
+      cuerpo: `No hay nada registrado entre el ${desdeDia(rangoDesde)
+        .toLocaleDateString('es-ES', { day:'numeric', month:'long' })} y el ${desdeDia(rangoHasta)
+        .toLocaleDateString('es-ES', { day:'numeric', month:'long' })}.` });
+    return;
+  }
+
+  const sale  = gs.filter(g => !esIngreso(g)).reduce((s, g) => s + g.c, 0);
+  const entra = gs.filter(esIngreso).reduce((s, g) => s + g.c, 0);
+  const porCat = cats().map(x => ({
+    ...x, s: gs.filter(g => !esIngreso(g) && g.cat === x.id).reduce((s, g) => s + g.c, 0),
+  })).filter(x => x.s > 0).sort((x, y) => y.s - x.s);
+  const sinGasto = new Set(gs.filter(g => !esIngreso(g)).map(g => dia(g.t))).size;
+
+  cuerpo.innerHTML = `
+    <div class="panel">
+      <div class="subtitulo" style="padding:0 0 6px">${dias} día${dias === 1 ? '' : 's'}</div>
+      <div class="granCifra num">${eur(sale)}</div>
+      <div class="delta">gastado${entra ? `, y <span class="num">${eur(entra)}</span>
+        de ingresos` : ''}</div>
+    </div>
+
+    <div class="rejilla">
+      <div class="mini"><b class="num">${eur(sale / dias)}</b><small>al día</small></div>
+      <div class="mini"><b class="num">${eur0(sale / (dias / 30.44))}</b><small>al mes</small></div>
+      <div class="mini"><b class="num ${entra - sale < 0 ? 'rojo' : ''}">${
+        eur0(entra - sale)}</b><small>balance</small></div>
+      <div class="mini"><b class="num">${dias - sinGasto}</b><small>días sin gastar</small></div>
+    </div>
+
+    ${porCat.length ? `<div class="rotulo">En qué se te fue</div>
+      ${porCat.map(x => `<div class="filaCat">
+        <span>${x.emo} ${escapar(x.nom)}</span>
+        <span class="num">${eur(x.s)}</span>
+        <span class="pct num">${Math.round((x.s / sale) * 100)}%</span>
+        <div class="barra"><i style="width:${(x.s / porCat[0].s) * 100}%;
+          background:${color(x.id)}"></i></div>
+      </div>`).join('')}` : ''}`;
 }
 
 function pintarMes(c) {
@@ -767,7 +866,7 @@ function pintarMes(c) {
       ${presu ? `<div class="barra" style="margin-top:14px"><i class="${total>presu?'pasado':''}"
           style="width:${Math.min(total/presu,1)*100}%"></i></div>
         <div class="delta">${total <= presu
-          ? `Te quedan ${eur0(presu-total)} de los ${eur0(presu)} del mes`
+          ? `Te quedan ${eurN0(presu-total)} de los ${eurN0(presu)} del mes`
           : `Has pasado el presupuesto en ${eur0(total-presu)}`}</div>` : ''}
     </div>
 
@@ -814,7 +913,7 @@ function pintarMes(c) {
           <div class="barra"><i class="${mal ? 'pasado' : ''}"
             style="width:${rel}%;background:${mal ? '' : color(x.id)}"></i></div>
           <span class="pct num ${mal ? 'rojo' : ''}">${x.tope
-            ? (mal ? `${eur0(x.s - x.tope)} de más` : `quedan ${eur0(x.tope - x.s)}`)
+            ? (mal ? `${eurN0(x.s - x.tope)} de más` : `quedan ${eurN0(x.tope - x.s)}`)
             : base ? ((x.s/base)*100).toFixed(0) + '%' : '—'}</span>
         </div>`;
       }).join('')}
