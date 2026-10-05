@@ -263,30 +263,99 @@ export function rentabilidad(invId) {
 
 /* ---------- Serie para la gráfica ----------
    Dos líneas: lo que has puesto y lo que vale. La distancia entre ambas es la
-   plusvalía, que es justo lo que se quiere ver de un vistazo. */
-export function serie(invId, meses = 12) {
+   plusvalía, que es justo lo que se quiere ver de un vistazo.
+
+   Los cortes no son siempre meses, y esa es la parte que importa: un mes medido
+   mes a mes da un punto, y diez años dan ciento veinte. El paso se elige según
+   lo que dure el periodo para que la línea tenga siempre entre una docena y unas
+   cuarenta marcas, que es la densidad en la que una línea se lee. El último
+   corte es siempre ahora, no el último día cerrado, porque el borde derecho de
+   la gráfica tiene que ser el valor de hoy. */
+
+const DIA = 86400000;
+
+/* Las etiquetas van abreviadas porque cinco botones con el nombre entero se
+   parten en dos filas en un móvil, y porque «1M / 6M / 1A» es como lo escriben
+   todas las apps de bolsa: se reconoce sin leerlo. El nombre largo va en el
+   aria-label, que es donde hace falta de verdad. */
+export const PERIODOS_INV = [
+  { id: 'mes',  nom: '1M',   largo: 'Último mes',    dias: 30 },
+  { id: '3m',   nom: '3M',   largo: 'Últimos 3 meses', dias: 91 },
+  { id: '6m',   nom: '6M',   largo: 'Últimos 6 meses', dias: 182 },
+  { id: 'ano',  nom: '1A',   largo: 'Último año',    dias: 365 },
+  { id: 'todo', nom: 'Todo', largo: 'Todo el histórico', dias: null },
+];
+
+const finDeMes = (a, m) => new Date(a, m + 1, 0, 23, 59, 59, 999).getTime();
+const sinPunto = s => s.replace(/\./g, '');
+
+const etqDia = (ms, ano) => sinPunto(new Date(ms).toLocaleDateString('es-ES',
+  ano ? { day:'numeric', month:'short', year:'2-digit' } : { day:'numeric', month:'short' }));
+const etqMes = (ms, ano) => sinPunto(new Date(ms).toLocaleDateString('es-ES',
+  ano ? { month:'short', year:'2-digit' } : { month:'short' }));
+
+/** Los instantes en los que se mide, del más viejo al más nuevo. */
+export function cortes(desde, hasta = Date.now()) {
+  const dias = Math.max(0, (hasta - desde) / DIA);
+  /* Pasados once meses hay dos «oct» en la misma gráfica: ahí el año deja de
+     ser ruido y pasa a ser lo único que distingue un punto de otro. */
+  const conAno = dias > 330;
+  const ms = [];
+
+  /* La escalera va por cuántas marcas deja cada paso, no por lo que suena
+     redondo: un paso mensual en seis meses deja siete puntos, que no es una
+     línea sino un zigzag. Semanal aguanta hasta casi el año (45 marcas) y es
+     ahí donde el mensual empieza a tener suficientes. */
+  if (dias <= 320) {
+    const paso = (dias <= 45 ? 1 : 7) * DIA;
+    for (let t = hasta; t > desde; t -= paso) ms.push(t);
+    /* El borde izquierdo se añade a mano para no perder el principio del
+       periodo, pero solo si queda sitio: si el bucle ya ha llegado casi hasta
+       ahí, meterlo otra vez dibuja dos puntos pegados con la misma etiqueta. */
+    if (!ms.length || ms[ms.length - 1] - desde > paso / 2) ms.push(desde);
+    ms.reverse();
+    return ms.map(x => ({ ms: x, etq: etqDia(x, conAno) }));
+  }
+
+  /* Hasta tres años, fin de mes; más allá, de tres en tres meses. */
+  const paso = dias > 1100 ? 3 : 1;
+  const f = new Date(hasta);
+  for (let i = 0; i < 600; i += paso) {
+    const t = Math.min(finDeMes(f.getFullYear(), f.getMonth() - i), hasta);
+    if (t < desde) break;
+    ms.push(t);
+  }
+  ms.reverse();
+  return ms.map(x => ({ ms: x, etq: etqMes(x, conAno) }));
+}
+
+/** Dónde empieza el periodo elegido, sin inventar historia que no existe. */
+export const inicioPeriodo = (periodo, primera) => {
+  const p = PERIODOS_INV.find(x => x.id === periodo);
+  if (!p || p.dias === null) return primera;
+  return Math.max(primera, Date.now() - p.dias * DIA);
+};
+
+export function serie(invId, periodo = 'todo') {
   const c = producto(invId); if (!c) return [];
   const ap = aportes(invId);
   if (!ap.length) return [];
+  const vals = valoraciones(invId);
+  const cs = cortes(inicioPeriodo(periodo, ap[0].t));
 
-  const hoy = new Date();
-  const puntos = [];
-  for (let i = meses - 1; i >= 0; i--) {
-    const corte = new Date(hoy.getFullYear(), hoy.getMonth() - i + 1, 0, 23, 59, 59);
-    const ms = Math.min(corte.getTime(), Date.now());
-    const puesto = ap.filter(m => m.t <= ms).reduce((s, m) => s + m.c, 0);
-    if (!puesto && !puntos.length) continue;                 // antes de empezar, nada que pintar
-    const antes = valoraciones(invId).filter(m => m.t <= ms);
-    const vale = antes.length ? antes[antes.length - 1].c : null;
-    puntos.push({ ms, etq: corte.toLocaleDateString('es-ES', { month:'short' }).replace('.', ''),
+  /* Los apuntes vienen ordenados, así que se recorren una vez en paralelo con
+     los cortes en vez de filtrar la lista entera en cada punto. */
+  let i = 0, j = 0, puesto = 0, vale = null;
+  const puntos = cs.map(k => {
+    while (i < ap.length && ap[i].t <= k.ms) puesto += ap[i++].c || 0;
+    while (j < vals.length && vals[j].t <= k.ms) vale = vals[j++].c;
+    return { ms: k.ms, etq: k.etq,
       puesto: Math.round(puesto * 100) / 100,
-      vale: vale === null ? null : Math.round(vale * 100) / 100 });
-  }
+      vale: vale === null ? null : Math.round(vale * 100) / 100 };
+  });
   /* El último punto siempre es hoy, con el valor de hoy. */
-  if (puntos.length) {
-    const v = valorActual(invId);
-    puntos[puntos.length - 1].vale = v === null ? puntos[puntos.length - 1].vale : v;
-  }
+  const v = valorActual(invId);
+  if (puntos.length && v !== null) puntos[puntos.length - 1].vale = v;
   return puntos;
 }
 
@@ -298,7 +367,21 @@ export function serie(invId, meses = 12) {
 
    El día del mes se conserva: quien aporta el 31 sigue aportando el 31, salvo
    en los meses que no lo tienen, donde cae en el último. */
-export function seriePeriodica({ c, cada = 'mes', desde, hasta = Date.now() }) {
+export function seriePeriodica({ c, total, cada = 'mes', desde, hasta = Date.now() }) {
+  /* Dos formas de decir lo mismo: cuánto pusiste cada vez, o cuánto has puesto
+     en total. La segunda es la que se puede leer del banco sin hacer cuentas,
+     así que el importe de cada una sale de dividir. */
+  if (isFinite(total) && total !== 0) {
+    const hueco = seriePeriodica({ c: 1, cada, desde, hasta });
+    if (!hueco.length) return [];
+    const cada1 = Math.round((total / hueco.length) * 100) / 100;
+    const serie = hueco.map(x => ({ t: x.t, c: cada1 }));
+    /* El redondeo deja unos céntimos sueltos: se le dan a la última para que
+       la suma cuadre al céntimo con lo que ha dicho el usuario. */
+    const sobra = Math.round((total - cada1 * serie.length) * 100) / 100;
+    if (sobra) serie[serie.length - 1].c = Math.round((cada1 + sobra) * 100) / 100;
+    return serie;
+  }
   const salida = [];
   if (!isFinite(c) || c === 0 || !desde) return salida;
   const ini = new Date(desde), fin = new Date(hasta);
@@ -394,29 +477,36 @@ export function rentabilidadGlobal() {
   return r === null ? null : Math.round(r * 1000) / 10;
 }
 
-/** La serie de todos los productos, mes a mes, para la gráfica del agregado. */
-export function serieGlobal(meses = 12) {
+/** La serie de todos los productos juntos, para la gráfica del agregado.
+ *  Se mide a todos en los mismos instantes. Antes se alineaban por posición
+ *  en la lista, lo que solo funcionaba de casualidad mientras todos los
+ *  productos tuvieran puntos mensuales seguidos y acabaran hoy. */
+export function serieGlobal(periodo = 'todo') {
   const ps = productos();
   if (!ps.length) return [];
-  const series = ps.map(p => serie(p.id, meses));
-  const largo = Math.max(...series.map(s => s.length), 0);
-  if (!largo) return [];
-  const salida = [];
-  for (let i = 0; i < largo; i++) {
+  const vivos = ps.map(p => ({ p, ap: aportes(p.id), vals: valoraciones(p.id),
+    i: 0, j: 0, puesto: 0, vale: null, hoy: valorActual(p.id) }))
+    .filter(x => x.ap.length);
+  if (!vivos.length) return [];
+
+  const primera = Math.min(...vivos.map(x => x.ap[0].t));
+  const cs = cortes(inicioPeriodo(periodo, primera));
+
+  return cs.map((k, n) => {
+    const ultimo = n === cs.length - 1;
     let puesto = 0, vale = 0, hayValor = false;
-    let etq = '';
-    for (const s of series) {
-      /* Cada producto puede tener menos historia: se alinean por el final. */
-      const j = i - (largo - s.length);
-      if (j < 0) continue;
-      puesto += s[j].puesto || 0;
-      if (s[j].vale !== null) { vale += s[j].vale; hayValor = true }
-      etq = s[j].etq;
+    for (const e of vivos) {
+      while (e.i < e.ap.length && e.ap[e.i].t <= k.ms) e.puesto += e.ap[e.i++].c || 0;
+      while (e.j < e.vals.length && e.vals[e.j].t <= k.ms) e.vale = e.vals[e.j++].c;
+      puesto += e.puesto;
+      /* En el último punto manda el valor de hoy, que en modo automático sale
+         de las posiciones y no de la lista de valoraciones. */
+      const v = ultimo && e.hoy !== null ? e.hoy : e.vale;
+      if (v !== null) { vale += v; hayValor = true }
     }
-    salida.push({ etq, puesto: Math.round(puesto * 100) / 100,
-      vale: hayValor ? Math.round(vale * 100) / 100 : null });
-  }
-  return salida;
+    return { ms: k.ms, etq: k.etq, puesto: Math.round(puesto * 100) / 100,
+      vale: hayValor ? Math.round(vale * 100) / 100 : null };
+  });
 }
 
 /* ==========================================================================

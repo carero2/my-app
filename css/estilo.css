@@ -654,6 +654,11 @@ details.mas[open] summary::before{content:'−'}
 .opciones button{min-height:44px;padding:0 var(--e4);border-radius:var(--rp);background:var(--card);
   border:1px solid var(--line);font-size:var(--t-aux);font-weight:500;color:var(--muted)}
 .opciones button[aria-pressed=true]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+/* Periodos de la gráfica: son cinco y tienen que caber en una fila a 375px, así
+   que se reparten el ancho en vez de llevar el relleno suelto de las demás
+   píldoras. La altura de 44px la siguen heredando. */
+.opciones.periodos{flex-wrap:nowrap}
+.opciones.periodos button{flex:1 1 0;padding:0 var(--e2);min-width:0;text-align:center}
 .colores{display:flex;gap:var(--e2);flex-wrap:wrap;margin-top:var(--e2)}
 .colores button{width:44px;height:44px;border-radius:50%;border:2px solid transparent;
   background-clip:content-box;padding:4px}

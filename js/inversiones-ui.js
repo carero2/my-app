@@ -26,7 +26,7 @@ import {
   vlDe, navEurDe, refrescarPrecios, valorPorPosiciones, anotarValor,
   valorActual, ultimoValor, fechaValor, rentabilidad, serie, reparto, desfase,
   crearProducto, borrarProducto, seriePeriodica, leerPosiciones,
-  resumenGlobal, rentabilidadGlobal, serieGlobal,
+  resumenGlobal, rentabilidadGlobal, serieGlobal, PERIODOS_INV,
   ESCENARIOS, simular, costeDeEsperar, analisis, comisionDe, vlPedido,
 } from './inversiones.js';
 import { ingresado } from './finanzas.js';
@@ -34,6 +34,10 @@ import { ingresado } from './finanzas.js';
 let pantalla = 'resumen';   // 'resumen' | 'simulador'
 let sel = null;             // id del producto abierto, o null para el agregado
 let cargando = false;       // hay una petición de precios en vuelo
+/* El periodo de la gráfica es uno solo para las dos pantallas: quien está
+   mirando el último año del agregado quiere el último año al abrir un producto,
+   no volver a elegirlo. Por defecto, toda la historia. */
+let periodoGraf = 'todo';
 
 /* Lo último que se simuló, para no perderlo al cambiar de pestaña. */
 let sim = { inicial: 0, mensual: 200, anios: 20, pct: 6, inflacion: 0, subida: 0 };
@@ -106,7 +110,6 @@ function pintarResumen(c, vista) {
 
   const g = resumenGlobal();
   const tirG = rentabilidadGlobal();
-  const pts = serieGlobal();
   const noLiquido = ps.filter(p => !TIPOS_PROD[tipoDe(p)].liquido).length;
 
   c.innerHTML = `
@@ -126,14 +129,7 @@ function pintarResumen(c, vista) {
         se queda corto.</p>` : ''}
     </div>
 
-    ${pts.length > 1 ? `<div class="panel">
-      <div class="rotulo">Aportado y valor</div>
-      ${grafica(pts, 'var(--acento)')}
-      <div class="calPie">
-        <span><i class="lleno" style="background:var(--acento)"></i>Lo que vale</span>
-        <span><i style="background:var(--hueco);border-color:transparent"></i>Lo que has puesto</span>
-      </div>
-    </div>` : ''}
+    ${bloqueGrafica(serieGlobal, 'var(--acento)')}
 
     <div class="rotulo">Productos</div>
     <ul class="filas" id="invLista">${ps.map(p => {
@@ -166,6 +162,7 @@ function pintarResumen(c, vista) {
     const f = e.target.closest('[data-prod]'); if (!f) return;
     sel = f.dataset.prod; pintar(vista);
   };
+  enchufarGrafica(c, serieGlobal, 'var(--acento)');
 }
 
 /* ---------- Qué dicen tus números ----------
@@ -204,7 +201,6 @@ function pintarDetalle(c, vista) {
   const tirP = rentabilidad(sel);
   const fecha = fechaValor(sel);
   const ap = aportes(sel);
-  const pts = serie(sel);
   const d = desfase(sel);
 
   c.innerHTML = `
@@ -235,14 +231,7 @@ function pintarDetalle(c, vista) {
         new Date(d.desde).toLocaleDateString('es-ES', { day:'numeric', month:'long' })}.
         Vuelve a pegar la tabla de tu banco para ponerlas al día.</p>` : ''}
 
-    ${pts.length > 1 ? `<div class="panel">
-      <div class="rotulo">Aportado y valor</div>
-      ${grafica(pts, p.color)}
-      <div class="calPie">
-        <span><i class="lleno" style="background:${p.color}"></i>Lo que vale</span>
-        <span><i style="background:var(--hueco);border-color:transparent"></i>Lo que has puesto</span>
-      </div>
-    </div>` : ''}
+    ${bloqueGrafica(per => serie(sel, per), p.color)}
 
     ${modo === 'auto' ? bloquePosiciones(p) : bloqueValores(p)}
 
@@ -292,6 +281,7 @@ function pintarDetalle(c, vista) {
     const pos = e.target.closest('[data-pos]');
     if (pos) hojaPosicion(datos.posiciones.find(x => x.id === pos.dataset.pos), vista);
   });
+  enchufarGrafica(c, per => serie(sel, per), p.color);
 }
 
 /* ---------- Bloques propios de cada modo ---------- */
@@ -443,13 +433,66 @@ function pintarSimulador(c, vista) {
     c.querySelector(x)?.addEventListener('change', leer));
 }
 
+/* ---------- Panel de la gráfica, con su selector de periodo ----------
+   El panel se dibuja o no según la historia completa, nunca según el periodo
+   elegido: si desapareciera al elegir «Mes» se iría con él el selector, y no
+   habría forma de volver. Cuando el periodo elegido se queda sin puntos, lo que
+   se cambia es el interior, y el selector sigue ahí. */
+function bloqueGrafica(dame, color) {
+  if (dame('todo').length < 2) return '';
+  return `<div class="panel" id="grafPanel">${graficaInterior(dame, color)}</div>`;
+}
+
+function graficaInterior(dame, color) {
+  const pts = dame(periodoGraf);
+  const botones = PERIODOS_INV.map(p =>
+    `<button data-gp="${p.id}" aria-pressed="${p.id === periodoGraf}"
+       aria-label="${p.largo}" title="${p.largo}">${p.nom}</button>`).join('');
+  const cuerpo = pts.length > 1
+    ? `${grafica(pts, color)}
+       <div class="calPie">
+         <span><i class="lleno" style="background:${color}"></i>Lo que vale</span>
+         <span><i style="background:var(--hueco);border-color:transparent"></i>Lo que has puesto</span>
+       </div>
+       ${rangoDe(pts).cero ? '' : `<p class="estado">La escala no empieza en cero,
+         para que se vea el movimiento.</p>`}`
+    : `<p class="estado">En este periodo no hay suficiente historia para dibujar la
+         línea. Prueba con uno más largo.</p>`;
+  return `<div class="rotulo" style="padding-top:0">Aportado y valor</div>
+    <div class="opciones periodos" id="grafPer" style="margin:0 0 14px">${botones}</div>
+    ${cuerpo}`;
+}
+
+/** Vuelve a pintar solo el panel: cambiar el periodo no debe mover la página. */
+function enchufarGrafica(c, dame, color) {
+  const panel = c.querySelector('#grafPanel');
+  if (!panel) return;
+  panel.addEventListener('click', e => {
+    const b = e.target.closest('[data-gp]'); if (!b) return;
+    periodoGraf = b.dataset.gp;
+    panel.innerHTML = graficaInterior(dame, color);
+  });
+}
+
 /* ---------- Gráfica de dos líneas ----------
    Lo aportado es un escalón que solo sube; el valor va por encima o por debajo.
    La distancia entre las dos es la plusvalía, que es lo que se quiere leer. */
-function grafica(pts, color) {
+
+/* La escala no se fuerza a cero. Forzarlo es lo honesto en un gráfico de
+   barras, pero aquí machaca justo el dato: en un periodo corto las dos líneas
+   valen casi lo mismo y, medidas desde cero, quedan pegadas arriba y no se ve
+   ni el movimiento ni el hueco entre ellas. Como no empezar en cero exagera
+   las subidas, cuando pasa se dice debajo de la gráfica. */
+function rangoDe(pts) {
   const vals = pts.flatMap(p => [p.puesto, p.vale]).filter(v => v !== null && isFinite(v));
-  const max = Math.max(...vals, 1), min = Math.min(...vals, 0);
-  const rango = max - min || 1;
+  if (!vals.length) return { min: 0, max: 1, cero: true };
+  const max = Math.max(...vals), min = Math.min(...vals);
+  return { min, max, cero: min <= 0 };
+}
+
+function grafica(pts, color) {
+  const { min, max } = rangoDe(pts);
+  const rango = (max - min) || Math.max(1, Math.abs(max) * 0.02);
   const x = i => (i / Math.max(1, pts.length - 1)) * 100;
   const y = v => 100 - ((v - min) / rango) * 92 - 4;
 
@@ -498,7 +541,11 @@ function hojaAporte(m, vista) {
       <button data-p="0" aria-pressed="true">Una sola vez</button>
       <button data-p="1" aria-pressed="false">Periódica</button>
     </div>` : ''}
-    <label><span>Importe${nuevo ? ' de cada aportación' : ''}</span>
+    <div class="opciones oculto" id="apQue" style="margin-top:14px">
+      <button data-q="cada" aria-pressed="true">Sé cuánto puse cada vez</button>
+      <button data-q="total" aria-pressed="false">Sé el total</button>
+    </div>
+    <label><span id="apEtqC">Importe${nuevo ? ' de cada aportación' : ''}</span>
       <input id="apC" type="number" inputmode="decimal" step="any" value="${m?.c ?? ''}"
         placeholder="250" autofocus>
       <small class="pega" id="apMal"></small></label>
@@ -519,13 +566,17 @@ function hojaAporte(m, vista) {
       <button class="ok" id="apOk">${nuevo ? 'Añadir' : 'Guardar'}</button></div>`,
   caja => {
     const $ = s => caja.querySelector(s);
-    let periodica = false;
-    const serie = () => seriePeriodica({
-      c: parseFloat($('#apC').value),
-      cada: $('#apCada').value,
-      desde: desdeDia($('#apT').value).getTime(),
-      hasta: desdeDia($('#apHasta').value).getTime(),
-    });
+    let periodica = false, porTotal = false;
+    const serie = () => {
+      const v = parseFloat($('#apC').value);
+      const comun = {
+        cada: $('#apCada').value,
+        desde: desdeDia($('#apT').value).getTime(),
+        hasta: desdeDia($('#apHasta').value).getTime(),
+      };
+      return porTotal ? seriePeriodica({ total: v, ...comun })
+                      : seriePeriodica({ c: v, ...comun });
+    };
     const previa = () => {
       if (!periodica) return;
       const s = serie();
@@ -537,18 +588,44 @@ function hojaAporte(m, vista) {
                .replace('.', '')} a ${new Date(s[s.length - 1].t)
                .toLocaleDateString('es-ES', { month:'short', year:'numeric' }).replace('.', '')}</span>
              <b class="num">${eur(total)}</b></div>
-           <p class="estado">Compara ese total con lo que tu banco llame «invertido»: si no
-             cuadra, ajusta el importe o las fechas antes de guardar.</p>`
+           <p class="estado">${porTotal
+             ? `Salen a <b class="num">${eur(s[0].c)}</b> cada una. Repartir por igual no es `
+               + 'exactamente lo que hiciste, pero para la rentabilidad basta: lo que la mueve '
+               + 'de verdad es cuándo empezaste, no el reparto mes a mes.'
+             : 'Compara ese total con lo que tu banco llame «invertido»: si no cuadra, '
+               + 'ajusta el importe o las fechas antes de guardar.'}</p>`
         : `<p class="estado">Con esas fechas no sale ninguna aportación.</p>`;
       $('#apOk').textContent = s.length ? `Añadir ${s.length}` : 'Añadir';
     };
+    $('#apQue')?.addEventListener('click', e => {
+      const b = e.target.closest('[data-q]'); if (!b) return;
+      porTotal = b.dataset.q === 'total';
+      caja.querySelectorAll('#apQue button').forEach(x =>
+        x.setAttribute('aria-pressed', (x.dataset.q === 'total') === porTotal));
+      $('#apEtqC').textContent = porTotal ? 'Total aportado hasta ahora'
+                                          : 'Importe de cada aportación';
+      $('#apC').placeholder = porTotal ? '12000' : '250';
+      previa();
+    });
     $('#apModo')?.addEventListener('click', e => {
       const b = e.target.closest('[data-p]'); if (!b) return;
       periodica = b.dataset.p === '1';
       caja.querySelectorAll('#apModo button').forEach(x =>
         x.setAttribute('aria-pressed', (x.dataset.p === '1') === periodica));
       $('#apPeri').classList.toggle('oculto', !periodica);
+      $('#apQue').classList.toggle('oculto', !periodica);
       $('#apEtqT').textContent = periodica ? 'Primera aportación' : 'Fecha';
+      if (!periodica) {
+        /* Al volver a "una sola vez" el reparto por total no tiene sentido, así que
+           se apaga; los botones tienen que reflejarlo para cuando vuelva a abrirse. */
+        porTotal = false;
+        caja.querySelectorAll('#apQue button').forEach(x =>
+          x.setAttribute('aria-pressed', x.dataset.q === 'cada'));
+        $('#apC').placeholder = '250';
+        $('#apEtqC').textContent = 'Importe';
+      }
+      else $('#apEtqC').textContent = porTotal ? 'Total aportado hasta ahora'
+                                               : 'Importe de cada aportación';
       $('#apOk').textContent = 'Añadir';
       previa();
     });

@@ -465,6 +465,34 @@ El agregado va en este orden, y el orden importa:
    plusvalía: hace visible el interés compuesto y hace llevaderas las caídas.
 3. **La lista de productos**, cada uno con su valor y su plusvalía.
 
+#### El periodo de la gráfica
+
+La gráfica enseña por defecto **toda la historia**, y encima lleva `1M · 3M · 6M · 1A · Todo`.
+Cambiar de periodo vuelve a pintar solo el panel, así que la página no se mueve bajo el dedo.
+
+Lo que no se ve pero sostiene todo lo demás es que **el paso del eje cambia con el periodo**. Un
+mes medido mes a mes da un punto, y diez años dan ciento veinte: ni una cosa ni la otra es una
+línea. Así que el corte se elige por lo que dura el periodo, buscando que siempre haya entre una
+docena y unas cuarenta marcas, que es la densidad en la que una línea se lee:
+
+| Duración | Paso | Marcas |
+| --- | --- | --- |
+| hasta mes y medio | diario | hasta 46 |
+| hasta ~11 meses | semanal | 7 – 45 |
+| hasta 3 años | fin de mes | 11 – 37 |
+| más de 3 años | fin de trimestre | 13 en adelante |
+
+Dos detalles que solo se notan cuando faltan. **El último punto es siempre ahora**, no el último
+día cerrado, porque el borde derecho tiene que ser el valor de hoy. Y **la etiqueta lleva el año
+en cuanto el periodo pasa de once meses**: sin eso, en una gráfica de dos años hay dos «oct» y no
+hay forma de saber cuál es cuál.
+
+**La escala no empieza en cero.** Forzar el cero es lo correcto en un gráfico de barras, pero aquí
+machaca justo el dato: en un periodo corto las dos líneas valen casi lo mismo y, medidas desde
+cero, quedan pegadas arriba sin que se vea ni el movimiento ni el hueco entre ellas. Como no
+empezar en cero exagera las subidas, cuando ocurre se dice debajo de la gráfica en vez de
+esconderlo.
+
 El detalle de un producto repite el mismo esqueleto una capa más abajo, más sus movimientos y
 su ficha. Repetir el patrón es lo que hace que una app con cuentas se sienta sencilla.
 
@@ -555,6 +583,30 @@ llame «invertido» antes de guardar.
 
 El día del mes se conserva: quien aporta el 31 sigue aportando el 31, y en los meses que no lo
 tienen cae en el último día sin arrastrar el desfase a los siguientes.
+
+**Dos formas de decir lo mismo.** Dentro de «Periódica» hay un interruptor: *sé cuánto puse cada
+vez* o *sé el total*. El importe de cada aportación es un dato que casi nadie recuerda y que
+además cambió por el camino; el total acumulado, en cambio, está escrito en la pantalla del banco
+como «invertido» o «aportado». Con la segunda opción se teclea ese total y la app lo reparte por
+igual entre los periodos, dándole los céntimos del redondeo a la última aportación para que la
+suma cuadre al céntimo con lo que se ha escrito.
+
+El reparto por igual es una aproximación, y conviene saber cuánto cuesta. Sobre un caso de dos
+años, el error en la rentabilidad anual (TIR) frente a lo que habría salido con los importes
+reales:
+
+| Cómo entró el dinero de verdad | Error de la aproximación |
+| --- | --- |
+| Importes irregulares mes a mes | 0,7 puntos |
+| El doble los primeros 12 meses | 3,0 puntos |
+| El doble los últimos 12 meses | 4,3 puntos |
+| Todo de golpe al principio | 10,0 puntos |
+
+La lectura es que el reparto por igual aguanta bien lo que hace la mayoría —aportar más o menos lo
+mismo cada mes— y que el error grande no viene de repartir, sino de meter el total como **una sola
+aportación**. Eso le dice a la app que el dinero llevaba dos años trabajando cuando la mitad llevaba
+uno, y hunde la rentabilidad diez puntos. Si hubo un cambio de importe claro a mitad de camino, lo
+exacto es hacer dos series periódicas, una por tramo.
 
 #### El simulador
 
