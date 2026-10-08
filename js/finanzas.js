@@ -251,6 +251,10 @@ let sub = 'anadir', off = 0, filtro = null, busca = '', vistaMet = 'mes', anioOf
 let rangoDesde = null, rangoHasta = null;
 let impMin = '', impMax = '';
 let revisando = false;   // bandeja de gastos compartidos por revisar
+
+/* La fracción de un gasto dividido. Estaba escrita a mano como «½», así que un
+   gasto partido entre tres decía «½ de 30 €» y mentía por diez euros. */
+const fraccion = n => ({ 2: '½', 3: '⅓', 4: '¼' }[n] || `1/${n}`);
 let buffer = '', catSel = null, tipoSel = 'gasto', nota = '', fechaSel = null, editando = null;
 /* Dónde estaba el usuario cuando entró a añadir o a editar. Al guardar vuelve
    ahí: dejarlo en el teclado con la pantalla en blanco no cierra la tarea. */
@@ -615,7 +619,7 @@ function pintarLista(c) {
           <div class="txt"><b>${g.n ? escapar(g.n) : (ing ? 'Ingreso' : x.nom)}</b>
             <small>${g.fijo ? '<span class="fijo">fijo</span>' : ''}${
               g.revisar ? '<span class="fijo rev">revisar</span>' : ''}${
-              g.compartido ? `½ de ${eur(g.total || g.c * g.compartido)}${
+              g.compartido > 1 ? `${fraccion(g.compartido)} de ${eur(g.total || g.c * g.compartido)}${
               g.quien ? ' · ' + escapar(g.quien) : ''} · ` : ''}${
               g.n ? (ing ? 'Ingreso' : x.nom) + ' · ' : ''}${new Date(g.t)
               .toLocaleDateString('es-ES',{day:'numeric',month:'short'})} · ${new Date(g.t)
@@ -867,7 +871,7 @@ function pintarMes(c) {
           style="width:${Math.min(total/presu,1)*100}%"></i></div>
         <div class="delta">${total <= presu
           ? `Te quedan ${eurN0(presu-total)} de los ${eurN0(presu)} del mes`
-          : `Has pasado el presupuesto en ${eur0(total-presu)}`}</div>` : ''}
+          : `Has pasado el presupuesto en ${eurN0(total-presu)}`}</div>` : ''}
     </div>
 
     ${entra > 0 ? `<div class="rejilla">

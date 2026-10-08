@@ -12,7 +12,7 @@ import {
 } from './nucleo.js';
 import * as fin from './finanzas.js';
 
-const VERSION = 'v32';
+const VERSION = 'v33';
 
 export function pintar(vista) {
   const n = pendientes();

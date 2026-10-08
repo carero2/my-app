@@ -52,7 +52,7 @@ export function pintar(vista, ir) {
       ${presu ? `<div class="barra" style="margin-top:12px">
           <i class="${mes>presu?'pasado':''}" style="width:${Math.min(mes/presu,1)*100}%"></i></div>
         <div class="delta">${mes <= presu ? `Te quedan ${eurN0(presu-mes)} este mes`
-          : `Has pasado el presupuesto en ${eur0(mes-presu)}`}</div>`
+          : `Has pasado el presupuesto en ${eurN0(mes-presu)}`}</div>`
         : '<div class="delta">Sin presupuesto definido</div>'}
       ${fin.excedidas().length ? `<div class="delta rojo">${fin.excedidas()
         .map(c => c.emo + ' ' + c.nom).join(', ')} por encima del límite</div>` : ''}
