@@ -318,6 +318,75 @@ export function serieResumen(rango, off = 0) {
    sobre todo, no fallar dos periodos seguidos.
    ========================================================================== */
 
+/* ---------- Fuerza del hábito ----------
+   La racha es frágil por diseño: un despiste la pone a cero y un hábito de seis
+   meses queda igual que el de ayer. La fuerza, tomada de Loop Habit Tracker, es
+   una media exponencial: sube cuando cumples y baja despacio cuando fallas, así
+   que un fallo la araña y solo una temporada entera la hunde. No sustituye a la
+   racha, convive con ella: la racha dice qué llevas seguido, la fuerza dice
+   cuánto hábito tienes. Y es la que sigue ahí el día después de romper una.
+
+     fuerza = anterior · m + logro · (1 − m)
+
+   La fórmula original recorre días naturales con m = 0,5^(√f/13), siendo f las
+   veces por día. Esta app guarda periodos, no días, así que recorre periodos
+   con m = 0,5^(1/(13·√f)), que deja la misma media vida en días: 13 para un
+   hábito diario, 20 para uno de tres días a la semana, 34 para uno semanal.
+   Fallar el único día que tocaba no puede costar lo mismo que fallar uno de
+   siete. */
+const frecDiaria = h => {
+  const frec = frecDe(h);
+  if (frec === 'semana') return 1 / 7;
+  if (frec === 'mes')    return 1 / 30.44;
+  return Array.isArray(h.dias) && h.dias.length ? h.dias.length / 7 : 1;
+};
+/** Cuánto se cumplió ese periodo, de 0 a 1. Los de cantidad puntúan a medias:
+ *  leer 10 páginas de 20 no es lo mismo que no abrir el libro. */
+const logro = (h, p) => h.tipo === 'sino'
+  ? (cumplido(h, p) ? 1 : 0)
+  : Math.min(1, valorDe(h, p) / (h.objetivo || 1));
+
+/** Fuerza de 0 a 100, o null si el hábito no es un objetivo o aún no tiene
+ *  ningún periodo cerrado. */
+export function fuerza(h) {
+  if (!esObjetivo(h)) return null;
+  const frec = frecDe(h);
+  const m = Math.pow(0.5, 1 / (13 * Math.sqrt(frecDiaria(h))));
+  const nacimiento = periodo(frec, h.t || 0);
+  const actual = clave(h);
+  const ps = [];
+  let p = actual, guarda = 0;
+  /* 200 periodos bastan de sobra: lo anterior pesa 0,5^(200/13), menos de una
+     diezmilésima. Sin tope, un hábito de años recorrería miles de periodos en
+     cada repintado para no mover ni un decimal. */
+  while (p >= nacimiento && ps.length < 200 && guarda++ < 900) {
+    /* El periodo en curso solo cuenta si ya está cumplido: mientras se puede
+       cerrar no es un fallo, igual que en la racha. Si no, la fuerza bajaría
+       sola cada mañana por no haber hecho todavía lo de hoy. */
+    if (toca(h, p) && (p !== actual || cumplido(h, p))) ps.push(p);
+    p = periodoAtras(frec, p, 1);
+  }
+  if (!ps.length) return null;
+  let s = 0;
+  for (let i = ps.length - 1; i >= 0; i--) s = s * m + logro(h, ps[i]) * (1 - m);
+  return Math.max(0, Math.min(100, Math.round(s * 100)));
+}
+
+/* ---------- Lo de ayer ----------
+   El agujero que más envenena las métricas no es fallar, es olvidarse de
+   marcar: el hábito se hizo y la app cree que no. Devuelve los hábitos diarios
+   que ayer tocaban y no tienen ningún registro, para poder cerrarlos de un
+   toque. Sin registro, no con el registro a cero: poner un cero es decir «no lo
+   hice», y eso ya es una respuesta que no hay que volver a preguntar. */
+export function pendientesAyer() {
+  const ayer = diaSuma(dia(), -1);
+  return activos().filter(h =>
+    frecDe(h) === 'dia' && esObjetivo(h) &&
+    toca(h, ayer) && ayer >= periodo('dia', h.t || 0) &&
+    !registro(h, ayer));
+}
+export const claveAyer = () => diaSuma(dia(), -1);
+
 /** Serie más larga de periodos cumplidos en todo el historial. */
 export function mejorRacha(h) {
   if (!esObjetivo(h)) return 0;

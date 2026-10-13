@@ -1,7 +1,8 @@
 /* ==========================================================================
    Pestaña Hoy: lo que necesitas ver y tocar en el día en curso.
    ========================================================================== */
-import { datos, eur, eur0, eurN, eurN0, dia, nombreCiclo, rangoCiclo, vacio } from './nucleo.js';
+import { datos, eur, eur0, eurN, eurN0, dia, nombreCiclo, rangoCiclo, vacio, ajuste }
+  from './nucleo.js';
 import * as fin from './finanzas.js';
 import * as hab from './habitos.js';
 import * as habUI from './habitos-ui.js';
@@ -18,6 +19,12 @@ export function pintar(vista, ir) {
   const hechos = delDia.filter(h => hab.cumplido(h)).length;
   const porCategorizar = fin.sinCategoria();
   const pendientesRev = fin.porRevisar();
+  /* Lo que más envenena las métricas de hábitos no es fallar: es haberlo hecho
+     y olvidarse de marcarlo. Se pregunta una vez por el día anterior y, si
+     dices que no falta nada, no se vuelve a preguntar por ese día. La marca es
+     de este dispositivo a propósito: es un «ya respondí aquí», no un dato. */
+  const ayer = hab.claveAyer();
+  const faltaAyer = ajuste('repasoAyer') === ayer ? [] : hab.pendientesAyer();
 
   vista.innerHTML = `<div class="scroll">
     <div class="saludo">${saludo(hoy)}</div>
@@ -45,6 +52,17 @@ export function pintar(vista, ir) {
         <small>${eur(porCategorizar.reduce((t, g) => t + g.c, 0))} sin categoría</small></span>
     </button>` : ''}
 
+    ${faltaAyer.length ? `<div class="bandeja">
+      <div><b>¿Te dejaste algo ayer?</b>
+        <small>${faltaAyer.length} hábito${faltaAyer.length === 1 ? '' : 's'} sin marcar · ${
+          new Date(ayer + 'T12:00').toLocaleDateString('es-ES', {weekday:'long', day:'numeric'})
+        }</small></div>
+      <button id="noAyer" aria-label="Ayer no falta nada por marcar"
+        data-tip="No falta nada">✕</button>
+      <button id="siAyer" class="ir" aria-label="Repasar los hábitos de ayer"
+        data-tip="Repasar ayer">›</button>
+    </div>` : ''}
+
     <div class="panel">
       <div class="subtitulo" style="padding:0 0 6px">${nombreCiclo(0)}${
         rangoCiclo(0) ? ` · ${rangoCiclo(0)}` : ''}</div>
@@ -70,6 +88,13 @@ export function pintar(vista, ir) {
   });
   vista.querySelector('#irSinCat')?.addEventListener('click', () => {
     fin.verSinCategoria(); ir('finanzas');
+  });
+  vista.querySelector('#noAyer')?.addEventListener('click', () => {
+    ajuste('repasoAyer', ayer);
+    pintar(vista, ir);
+  });
+  vista.querySelector('#siAyer')?.addEventListener('click', () => {
+    habUI.repasarAyer(() => pintar(vista, ir));
   });
 
   const caja = vista.querySelector('#habHoy');

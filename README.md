@@ -50,6 +50,8 @@ de sobra este uso.
 - Presupuesto del mes y límites por categoría, combinables y ambos opcionales
 - Fecha y hora manuales, para efectivo o recibos atrasados
 - Listado por meses con filtro por categoría y edición al tocar
+- Hábitos: racha, mejor racha y **fuerza** (media exponencial estilo Loop Habit Tracker),
+  fallos dobles, tasa de recuperación, día flojo de la semana y repaso de lo de ayer
 - Métricas del mes: variación frente al mes anterior y frente a tu media trimestral, media
   diaria, días sin gastar, día más caro, proporción de gasto fijo, tasa de ahorro y de
   esfuerzo, proyección a fin de mes, desglose por categoría y evolución de seis meses
@@ -437,6 +439,47 @@ dobles** (dos periodos seguidos sin cumplir) y la **tasa de recuperación** (de 
 fallaste, cuántas volviste al periodo siguiente). La racha premia la perfección y se rompe con
 un despiste; lo que de verdad predice que un hábito se consolide es no fallar dos veces
 seguidas. Por eso conviven con la racha en vez de sustituirla.
+
+### La fuerza del hábito
+
+Cada hábito muestra, junto a la racha, su **fuerza** de 0 a 100 con un medidor diminuto. Es
+una media exponencial tomada de [Loop Habit Tracker](https://github.com/iSoron/uhabits): sube
+cuando cumples y baja despacio cuando fallas.
+
+```
+fuerza = anterior · m + logro · (1 − m)
+```
+
+La fórmula original recorre días naturales con `m = 0,5^(√f/13)`, siendo `f` las veces por
+día. Esta app guarda periodos, no días, así que recorre periodos con `m = 0,5^(1/(13·√f))`,
+que deja **la misma media vida en días**: 13 para un hábito diario, 20 para uno de tres días
+a la semana, 34 para uno semanal. Fallar el único día que tocaba no puede costar lo mismo que
+fallar uno de siete.
+
+Por qué conviven las dos cifras: el día después de romper una racha de 60 días, la racha dice
+«0» y es lo único que ves. La fuerza dice 91%, que es lo cierto. La racha mide qué llevas
+seguido; la fuerza, cuánto hábito tienes.
+
+Detalles que evitan cifras injustas:
+
+- **El periodo en curso solo cuenta si ya está cumplido.** Si no, la fuerza bajaría sola cada
+  mañana por no haber hecho todavía lo de hoy.
+- **Los hábitos de cantidad puntúan a medias**: leer 10 páginas de 20 vale 0,5, no 0.
+- Los de **solo seguimiento** no tienen fuerza, igual que no tienen racha.
+- Se recorren como mucho 200 periodos: lo anterior pesa menos de una diezmilésima.
+
+### ¿Te dejaste algo ayer?
+
+Lo que más envenena las métricas de hábitos no es fallar, es **haberlo hecho y olvidarse de
+marcarlo**: la app cree que fallaste y la racha se rompe por un despiste de registro. Al
+abrir Hoy, si algún hábito diario que ayer tocaba no tiene ningún registro, aparece una
+pregunta que abre la hoja de ayer para cerrarlos de un toque. Rellenar el hueco **revive la
+racha** que se había roto.
+
+La ✕ responde que no falta nada y no se vuelve a preguntar por ese día. Se pregunta por
+registros **ausentes**, no por los que están a cero: poner un cero ya es decir «no lo hice»,
+y eso es una respuesta. La marca de «ya respondí» se queda en el dispositivo (no viaja): es
+estado de la pregunta, no un dato tuyo.
 Las tres ventanas comparan además con el periodo anterior en puntos porcentuales, y señalan
 el hábito que mejor llevas y el que más se te resiste.
 

@@ -13,7 +13,8 @@ import {
   toca, esObjetivo, cuentaHoy, valorDe, cumplido, racha, fijarValor,
   cronoActivo, arrancarCrono, pararCrono, minutosCrono, reloj,
   redondo, acumulado, calcularResumen, serieResumen,
-  mejorRacha, recuperacion, porDiaSemana, calendarioMes,
+  mejorRacha, recuperacion, porDiaSemana, calendarioMes, fuerza,
+  claveAyer,
 } from './habitos.js';
 
 /* Refresca los relojes en pantalla mientras haya un cronómetro en marcha. */
@@ -66,6 +67,18 @@ export function tarjeta(h) {
   /* La concordancia depende del periodo: «2 días seguidos», «2 semanas seguidas». */
   const seguido = frec === 'semana'
     ? (r === 1 ? 'seguida' : 'seguidas') : (r === 1 ? 'seguido' : 'seguidos');
+  /* El pie de la tarjeta. La racha solo aparece si la hay; la fuerza, siempre
+     que haya historial, y sobre todo cuando la racha vale cero: el día después
+     de romper una racha de cuarenta días, «0 días seguidos» es la única cifra
+     visible y es la más desmoralizante y la menos cierta de las dos. */
+  const f = fuerza(h);
+  const pie = [
+    r ? `🔥 ${r} ${r === 1 ? unidades[0] : unidades[1]} ${seguido}` : '',
+    f === null ? '' : `<span class="fuerza" data-fuerza="${h.id}"
+      title="Fuerza del hábito: ${f}%"><i style="width:${f}%;background:${col}"></i></span>
+      <span class="num">${f}%</span> de fuerza`,
+  ].filter(Boolean).join(' · ');
+
   /* En un día libre la tarjeta se atenúa, pero el control sigue activo:
      una sesión fuera de plan debe poder registrarse. */
   const sub = [
@@ -87,7 +100,7 @@ export function tarjeta(h) {
     ${h.tipo !== 'sino' || obj ? `<div class="barra"><i data-progreso="${h.id}"
       style="width:${pct}%;background:${col}"></i></div>` : ''}
     <div class="tira" data-tira="${h.id}">${tira(h, col)}</div>
-    ${r ? `<div class="racha">🔥 ${r} ${r === 1 ? unidades[0] : unidades[1]} ${seguido}</div>` : ''}
+    ${pie ? `<div class="racha">${pie}</div>` : ''}
   </div>`;
 }
 
@@ -399,7 +412,8 @@ function pintarResumen(c) {
             <small>${f.debidos ? `${f.hechos} de ${f.debidos}` : 'sin periodos que cumplir'}${
               f.extras ? ` · +${f.extras} extra` : ''}${
               f.h.tipo !== 'sino' && f.suma ? ` · ${escapar(acumulado(f.h, f.suma))}` : ''}
-              <br>racha ${racha(f.h)} · mejor ${mejorRacha(f.h)}</small></div>
+              <br>racha ${racha(f.h)} · mejor ${mejorRacha(f.h)}${
+                fuerza(f.h) === null ? '' : ` · fuerza ${fuerza(f.h)}%`}</small></div>
           <div class="imp num">${f.pct === null ? '—' : f.pct + '%'}</div>
         </div>
         <div class="barra"><i style="width:${f.pct ?? 0}%;background:${col}"></i></div>
@@ -650,6 +664,13 @@ function hojaDia(d, lote, alCerrar) {
     });
   });
 }
+
+
+/** Repaso de ayer. Reutiliza la hoja del día, que ya sabe marcar los tres
+ *  tipos de hábito y corregir lo que ya hubiera puesto; lo único nuevo aquí es
+ *  el día que se le pasa. */
+export const repasarAyer = alCerrar =>
+  hojaDia(claveAyer(), activos().filter(h => frecDe(h) === 'dia'), alCerrar);
 
 
 function mejorSub(serie) {

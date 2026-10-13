@@ -607,6 +607,12 @@ details.mas[open] summary::before{content:'−'}
 .opciones.dias button{min-width:44px;text-align:center;padding:var(--e3) 0}
 .hab.hecho .hab-nom b{opacity:.55}
 .racha{font-size:var(--t-meta);color:var(--muted);margin-top:var(--e2)}
+/* Medidor de fuerza: una barra diminuta en línea con el texto, para leer de un
+   vistazo si el hábito está arriba o abajo sin tener que procesar el número.
+   No es una barra de progreso más: la de arriba mide hoy, esta mide el poso. */
+.fuerza{display:inline-block;vertical-align:-1px;width:34px;height:4px;border-radius:2px;
+  background:var(--hueco);overflow:hidden;margin-right:var(--e1)}
+.fuerza i{display:block;height:100%;border-radius:2px}
 
 /* Cabecera de progreso del día */
 .resumenDia{display:flex;align-items:center;gap:var(--e4);background:var(--card);
@@ -653,6 +659,9 @@ details.mas[open] summary::before{content:'−'}
 .bandeja small{color:var(--muted);font-size:var(--t-meta)}
 .bandeja button{width:44px;height:44px;border-radius:50%;background:var(--hueco);
   color:var(--muted);display:grid;place-items:center;flex:none}
+/* La acción principal de una bandeja, en oscuro: dos círculos grises idénticos
+   obligan a leer los iconos para saber cuál es cuál. */
+.bandeja button.ir{background:var(--ink);color:var(--paper)}
 .confirmar{flex:none;width:44px;height:44px;border-radius:50%;background:var(--hueco);
   color:var(--ingreso);font-size:var(--t-base);font-weight:600;display:grid;place-items:center}
 .fijo.rev{color:var(--aviso);background:transparent;box-shadow:inset 0 0 0 1px currentColor}
