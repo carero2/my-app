@@ -265,9 +265,29 @@ ul.filas li:first-child{border-top:0}
 .delta{font-size:var(--t-aux);color:var(--muted);margin-top:var(--e1)}
 .rejilla{display:grid;grid-template-columns:1fr 1fr;gap:var(--e3);margin-top:var(--e3)}
 .mini{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);
-  box-shadow:var(--sombra),var(--brillo);padding:var(--e4)}
+  box-shadow:var(--sombra),var(--brillo);padding:var(--e4);position:relative}
 .mini b{display:block;font-size:22px;font-weight:600;letter-spacing:-.02em}
 .mini small{color:var(--muted);font-size:var(--t-meta)}
+
+/* «Qué significa esta cifra»: el interrogante vive en la esquina de la métrica
+   y la respuesta se despliega debajo de la rejilla, no encima de la cifra.
+   El botón se dibuja pequeño pero su zona de toque llega a 44px con ::before,
+   que es lo que se pulsa de verdad en un móvil. */
+.queEs{position:absolute;top:0;right:0;width:44px;height:44px;
+  display:grid;place-items:center;background:none;border:0;padding:0}
+.queEs i{width:20px;height:20px;display:grid;place-items:center;border-radius:50%;
+  border:1px solid var(--line);background:var(--hueco);color:var(--muted);
+  font-size:var(--t-meta);font-weight:600;font-style:normal;line-height:1}
+.queEs[aria-expanded=true] i{background:var(--acento);border-color:var(--acento);color:#fff}
+.panel > .queEs{top:var(--e2);right:var(--e2)}
+.panel.conAyuda{position:relative}
+.panel.conAyuda .granCifra,.panel.conAyuda .delta{padding-right:28px}
+.ayudaMet{margin-top:var(--e2);padding:var(--e4);
+  background:var(--acento-flojo);border:1px solid var(--line);border-radius:var(--r2);
+  font-size:var(--t-aux);line-height:1.55;color:var(--ink)}
+.ayudaMet b{display:block;font-weight:600;margin-bottom:var(--e1)}
+.ayudaMet p{margin:0;color:var(--muted)}
+.ayudaMet p b{display:inline;color:var(--ink);margin:0}
 .filaCat{display:grid;grid-template-columns:1fr auto;gap:var(--e1) var(--e3);
   margin-top:var(--e4);font-size:var(--t-aux)}
 .filaCat .pct{color:var(--muted);font-size:var(--t-meta)}

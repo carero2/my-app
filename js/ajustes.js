@@ -3,7 +3,7 @@
    pantalla no mezcle la clave del Worker con nueve casillas de euros.
    ========================================================================== */
 import {
-  datos, COLECCIONES, nube, ultimaSync, ultimoError, pendientes, ajuste, hayReintento,
+  datos, COLECCIONES, COLECCIONES_DATOS, nube, ultimaSync, ultimoError, pendientes, ajuste, hayReintento,
   configurarNube, probarNube, marcarTodoPendiente, sincronizar, diagnostico,
   borrar, guardar, enLote, emitir, avisar, eur0, dia,
   abrirHoja, cerrarHoja, confirmar,
@@ -12,11 +12,11 @@ import {
 } from './nucleo.js';
 import * as fin from './finanzas.js';
 
-const VERSION = 'v33';
+const VERSION = 'v34';
 
 export function pintar(vista) {
   const n = pendientes();
-  const items = COLECCIONES.reduce((s, c) => s + datos[c].length, 0);
+  const items = COLECCIONES_DATOS.reduce((s, c) => s + datos[c].length, 0);
 
   vista.innerHTML = `<div class="scroll">
     <div class="titulo">Ajustes</div>
@@ -279,7 +279,9 @@ function hojaPresupuesto(vista) {
       <label><span>Presupuesto del mes</span>
         <input id="presu" type="number" inputmode="decimal" min="0" step="10"
           placeholder="Sin límite" value="${mes || ''}"></label>
-      <p class="pieNota" style="padding:6px 2px 0">Tope para todo el gasto mensual. Opcional.</p>
+      <p class="pieNota" style="padding:6px 2px 0">Tope para todo el gasto mensual. Opcional.${
+        nube ? ' Los límites viajan con la sincronización: lo que pongas aquí vale también en '
+             + 'tus otros dispositivos.' : ''}</p>
 
       <label style="margin-top:18px"><span>Límite por categoría</span></label>
       <div class="grupo">
@@ -317,7 +319,7 @@ function hojaPresupuesto(vista) {
 
 /* ---------- Datos y copias ---------- */
 function hojaDatos(vista) {
-  const items = COLECCIONES.reduce((s, c) => s + datos[c].length, 0);
+  const items = COLECCIONES_DATOS.reduce((s, c) => s + datos[c].length, 0);
   abrirHoja(`
     <h3>Datos y copias</h3>
     <div class="grupo indice">
@@ -368,7 +370,7 @@ function hojaDatos(vista) {
           nube ? ', aquí y en la nube' : ''}. No se puede deshacer: exporta una copia antes si la quieres.`,
         si: `Borrar los ${items}`, no: 'Cancelar'
       })) return;
-      enLote(() => { for (const c of COLECCIONES) [...datos[c]].forEach(x => borrar(c, x.id)) });
+      enLote(() => { for (const c of COLECCIONES_DATOS) [...datos[c]].forEach(x => borrar(c, x.id)) });
       ajuste('catsSembradas', null);
       fin.sembrarCategorias();
       cerrarHoja(); pintar(vista); avisar('Todo borrado');
@@ -408,7 +410,7 @@ function hojaAcerca() {
     <h3>My-app ${VERSION}</h3>
     <p class="pieNota" style="padding:0">
       Abierta ${instalada ? 'desde el icono de la pantalla de inicio' : 'en el navegador'}.<br>
-      ${COLECCIONES.map(c => `${datos[c].length} ${c}`).join(' · ')}
+      ${COLECCIONES_DATOS.map(c => `${datos[c].length} ${c}`).join(' · ')}
     </p>
     <p class="pieNota">Los datos se guardan en este dispositivo y, si has configurado la
       sincronización, también en tu Worker. Nada pasa por GitHub: allí solo está el código.</p>

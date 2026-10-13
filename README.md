@@ -363,6 +363,26 @@ no lo tiene, el porcentaje es sobre el presupuesto del mes, y si tampoco hay pre
 sobre el gasto total del mes.
 
 Las categorías que superan su límite salen en rojo también en la cinta de Finanzas y en Hoy.
+
+Los límites **viajan con la sincronización** (v34): el presupuesto del mes, los límites por
+categoría y el día de corte del mes contable son ajustes de la persona, no del aparato, y
+tenerlos distintos en el móvil y en el ordenador hacía que cada pantalla respondiera con
+convicción a una pregunta distinta.
+
+**Comparar a la misma altura de mes.** Mientras el mes está en curso, las comparaciones
+—«respecto a septiembre», «respecto a tu media de los últimos 3 meses»— se recortan a los
+mismos días en los dos lados y lo dicen: *«▲ 12% respecto a septiembre a estas alturas»*.
+Comparar el día 5 contra septiembre entero daba una caída enorme el día 2, otra casi igual
+el día 3, y solo dejaba de mentir el último día del mes: no medía decisiones, medía el
+calendario. Si el mes anterior fue más corto, se recorta también el actual para que las dos
+ventanas midan lo mismo. La cifra grande sigue siendo el mes entero. Un mes ya cerrado se
+compara entero, como siempre.
+
+**Qué significa esta cifra.** Las métricas cuyo nombre no se explica solo llevan un
+interrogante en la esquina. Al pulsarlo, la explicación se despliega debajo de la rejilla
+—nunca encima de la cifra por la que preguntas— y viene con **tus** números dentro: la
+proyección a fin de mes enseña el reparto entre fijos y variable que la produce, no una
+fórmula genérica que haya que traducir.
 Ajustes avisa si la suma de los límites por categoría se pasa del presupuesto del mes.
 
 **Editar o borrar un movimiento:** en *Movimientos*, tócalo para editarlo o pulsa la ✕ para
@@ -1063,7 +1083,7 @@ fecha;importe;categoria;nota;tipo
 
 ## Modelo de datos
 
-Seis colecciones. Todos los items comparten `id` (identificador único) y `t` (marca de
+Cada colección sincroniza por separado. Todos los items comparten `id` (identificador único) y `t` (marca de
 tiempo en milisegundos). El campo `pend` es local: marca lo que aún no ha subido y nunca
 se envía al servidor.
 
@@ -1118,6 +1138,25 @@ otro dispositivo, se adopta la del servidor en vez de pisarla con los valores po
 El campo `ultimo` guarda el mes en que se generó por última vez, para no duplicar.
 Los movimientos que crean llevan `fijo` con el id de su plantilla.
 
+**ajustes** — los ajustes que son de la persona, no del aparato
+```js
+{ id: 'presupuesto', t, v: 1200 }
+```
+El `id` es el nombre del ajuste, no un identificador al azar: así dos dispositivos
+convergen en el mismo item en vez de crear uno cada uno. Quitar un ajuste guarda
+`v: null` en lugar de borrar el item, porque una lápida con id fijo dejaría ese ajuste
+imposible de volver a poner en ningún dispositivo.
+
+Viajan tres: `presupuesto`, `presupuestos` y `cicloInicio`. El tema, el modo discreto, el
+cronómetro en marcha y las cachés se quedan en cada aparato: querer la pantalla oscura en
+el móvil no es quererla en el ordenador. Un límite distinto en cada sitio, en cambio, no
+es una preferencia, es un error que falsea las métricas sin avisar.
+
+Al actualizar desde la v33, el valor que hubiera en local entra marcado como `_semilla`:
+si el servidor ya tiene el suyo, gana el del servidor, igual que con las categorías. Con
+dos dispositivos que tenían límites distintos, el primero que sincronice marca el valor
+bueno; comprueba **Ajustes → Presupuesto** una vez después de actualizar.
+
 ### Claves de `localStorage`
 
 Conservan el prefijo `vida.` del nombre anterior del proyecto. **No las cambies:** hacerlo
@@ -1128,10 +1167,13 @@ guardados.
 vida.gastos  vida.habitos  vida.registros
 vida.cola.<colección>      ids borrados pendientes de subir
 vida.nube                  { url, clave }
+vida.ajustes               colección de ajustes que sincronizan (v34)
 vida.ajuste.catsSembradas    true una vez creadas las categorías iniciales
-vida.ajuste.presupuesto      número, presupuesto del mes
-vida.ajuste.presupuestos     { categoría: tope } límites por categoría
 vida.ajuste.crono          { hab, inicio }
+vida.ajuste.tema           'claro' | 'oscuro'
+vida.ajuste.discreto       true con las cifras tapadas
+vida.ajuste.presupuesto      ← hasta la v33; desde la v34 vive en la colección «ajustes»
+vida.ajuste.presupuestos     ← ídem. La clave vieja se deja sin tocar por si se vuelve atrás
 vida.ajuste.coloresGrupo   { grupo: color } — caché; el color viaja en cada hábito
 vida.ajuste.coloresNota    { categoría: color } — caché; el color viaja en cada nota
 vida.ultimaSync            marca de tiempo

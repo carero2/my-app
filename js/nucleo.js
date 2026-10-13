@@ -4,7 +4,12 @@
    ========================================================================== */
 
 export const COLECCIONES = ['gastos', 'habitos', 'registros', 'notas', 'categorias', 'fijos',
-                            'inversiones', 'invmov', 'posiciones'];
+                            'inversiones', 'invmov', 'posiciones', 'ajustes'];
+
+/* Lo que el usuario llama «sus registros». «ajustes» sincroniza como una
+   colección más, pero no es un dato que contar en una copia de seguridad ni
+   que llevarse por delante al borrar todo. */
+export const COLECCIONES_DATOS = COLECCIONES.filter(c => c !== 'ajustes');
 
 const K = {
   datos:  c => 'vida.' + c,
@@ -140,12 +145,54 @@ for (const c of COLECCIONES) {
 export let nube = leerJSON(K.cfg, null);
 export let ultimaSync = parseInt(localStorage.getItem(K.sync)) || 0;
 
-export const ajuste = (nombre, valor) => {
+/* ---------- Ajustes ----------
+   Hay dos clases, y la diferencia importa. Los del dispositivo —el tema, el
+   modo discreto, el cronómetro en marcha, las cachés— se quedan aquí: querer
+   la pantalla oscura en el móvil no es quererla en el ordenador, y tapar las
+   cifras en el metro no es tapárselas en casa.
+
+   Los de la persona viajan. Tener un presupuesto de 600 € en el móvil y de
+   800 € en el ordenador no es una preferencia: es un error que falsea todas
+   las métricas sin avisar, porque cada pantalla responde con convicción a una
+   pregunta distinta. Lo mismo el día en que empieza el mes contable.
+
+   Cada ajuste que viaja es un item con el nombre por id, así que los dos
+   dispositivos convergen en el mismo sitio en vez de crear uno cada uno.
+   Quitar uno guarda v:null en lugar de borrar el item: una lápida con id fijo
+   dejaría ese ajuste imposible de volver a poner, aquí y en los demás. */
+export const AJUSTES_NUBE = new Set(['presupuesto', 'presupuestos', 'cicloInicio']);
+
+export function ajuste(nombre, valor) {
+  if (AJUSTES_NUBE.has(nombre)) {
+    if (valor === undefined) return datos.ajustes.find(x => x.id === nombre)?.v ?? null;
+    if (datos.ajustes.some(x => x.id === nombre)) actualizar('ajustes', nombre, { v: valor });
+    else if (valor !== null) anadir('ajustes', { id: nombre, v: valor });
+    return valor;
+  }
   if (valor === undefined) return leerJSON(K.ajuste(nombre), null);
   valor === null ? localStorage.removeItem(K.ajuste(nombre))
                  : localStorage.setItem(K.ajuste(nombre), JSON.stringify(valor));
   return valor;
-};
+}
+
+/* Traspaso de los ajustes que antes solo vivían aquí (v34). El valor local
+   entra como semilla: si el servidor ya tiene el suyo, gana el del servidor,
+   igual que con las categorías renombradas. Así, actualizar dos dispositivos
+   que tenían límites distintos no deja que decida el orden de apertura, y la
+   clave vieja de localStorage se queda por si se vuelve a una versión previa. */
+{
+  let movidos = 0;
+  for (const nombre of AJUSTES_NUBE) {
+    if (datos.ajustes.some(x => x.id === nombre)) continue;
+    const v = leerJSON(K.ajuste(nombre), null);
+    if (v === null) continue;
+    datos.ajustes.push({ id: nombre, t: Date.now(), v, _semilla: true, pend: true });
+    movidos++;
+  }
+  if (movidos) try {
+    localStorage.setItem(K.datos('ajustes'), JSON.stringify(datos.ajustes));
+  } catch {}
+}
 
 /* ---------- Tema ----------
    'auto' sigue al sistema; 'claro' y 'oscuro' mandan sobre él. El atributo va

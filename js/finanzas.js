@@ -87,6 +87,18 @@ export const delMes = off => {
   return datos.gastos.filter(g => g.t >= a && g.t <= b);
 };
 export const gastado = off => delMes(off).filter(g => !esIngreso(g)).reduce((s,g) => s + g.c, 0);
+/** Lo gastado en un ciclo durante sus primeros `dias` días.
+ *  Sirve para comparar a la misma altura de mes: el día 5 contra todo el mes
+ *  pasado no mide un cambio de hábitos, mide que el mes acaba de empezar.
+ *  Los días se suman con setDate y no con milisegundos para que el cambio de
+ *  hora no deje el corte una hora antes y se coma la noche del último día. */
+export function gastadoHasta(off, dias) {
+  const ini = inicioCiclo(off);
+  const corte = new Date(ini); corte.setDate(corte.getDate() + dias);
+  const a = ini.getTime(), b = Math.min(corte.getTime(), finCiclo(off).getTime() + 1);
+  return datos.gastos.filter(g => g.t >= a && g.t < b && !esIngreso(g))
+    .reduce((s, g) => s + g.c, 0);
+}
 export const ingresado = off => delMes(off).filter(esIngreso).reduce((s,g) => s + g.c, 0);
 /* ---------- Consultas por año ---------- */
 export const delAnio = (off = 0) => {
@@ -816,8 +828,6 @@ function pintarMes(c) {
   }
 
   const total = gastado(off), entra = ingresado(off), presu = presupuesto();
-  const prev = gastado(off - 1);
-  const delta = prev > 0 ? ((total - prev) / prev) * 100 : null;
   const enCurso = off === 0;
   const diasMes = diasCiclo(off);
   /* Con mes contable, «los días que llevas» se cuentan desde el inicio del
@@ -826,6 +836,18 @@ function pintarMes(c) {
     ? Math.min(diasMes, Math.floor((Date.now() - inicioCiclo(off).getTime()) / 86400000) + 1)
     : diasMes;
   const media = total / diasPasados;
+  /* ---------- Comparar a la misma altura de mes ----------
+     El 5 de octubre contra todo septiembre daba «▼ 83%» y lo seguía dando el 6
+     y el 7: no medía un cambio de hábitos, medía que el mes acababa de empezar,
+     y la cifra solo dejaba de mentir el último día. Con el mes en curso se
+     comparan los mismos días de cada mes. Si el anterior fue más corto —29 de
+     febrero contra el 30 de marzo— se recorta también este, para que las dos
+     ventanas midan lo mismo y no se compare una de 30 días con una de 28. */
+  const diasComp = enCurso ? Math.min(diasPasados, diasCiclo(off - 1)) : diasMes;
+  const parcial  = enCurso && diasComp < diasMes;
+  const hastaAqui = parcial ? gastadoHasta(off, diasComp) : total;
+  const prev = parcial ? gastadoHasta(off - 1, diasComp) : gastado(off - 1);
+  const delta = prev > 0 ? ((hastaAqui - prev) / prev) * 100 : null;
   /* La proyección se calla los primeros días: con dos o tres datos es ruido.
      Los gastos fijos no se promedian: se suman enteros una sola vez. */
   const proyectable = !enCurso || diasPasados >= 7;
@@ -839,8 +861,10 @@ function pintarMes(c) {
   /* Días sin gastar: métrica clásica de las apps de presupuesto, y la única
      que mide una decisión en vez de una cantidad. */
   const sinGastar = diasPasados - Object.keys(porDia).length;
-  /* Un mes suelto es ruido; la media de los tres anteriores es mejor vara. */
-  const trimestre = [1,2,3].map(i => gastado(off - i)).filter(x => x > 0);
+  /* Un mes suelto es ruido; la media de los tres anteriores es mejor vara.
+     Recortados a la misma ventana, por lo mismo que el mes anterior. */
+  const trimestre = [1,2,3].map(i => parcial ? gastadoHasta(off - i, diasComp) : gastado(off - i))
+    .filter(x => x > 0);
   const mediaPrev = trimestre.length
     ? trimestre.reduce((s,x) => s+x, 0) / trimestre.length : null;
   const esfuerzo = entra > 0 ? Math.round((total / entra) * 100) : null;
@@ -856,50 +880,63 @@ function pintarMes(c) {
     .sort((a,b) => b.s - a.s);
   const pasadas = porCat.filter(x => x.tope && x.s > x.tope).length;
 
+  const mesPrev = nombreCiclo(off - 1).split(' ')[0].toLowerCase();
+  const alturas = parcial ? ' a estas alturas' : '';
+  const ayudas = ayudasMes({ parcial, diasComp, diasPasados, diasMes, mesPrev, enCurso,
+    total, hastaAqui, prev, media, fijoMes, mediaVar, proyeccion, proyectable,
+    entra, esfuerzo, sinGastar, nPrev: trimestre.length });
+
   cuerpo.innerHTML = `
-    <div class="panel">
+    ${zonaMet(`<div class="panel conAyuda">
+      ${queEs('comparacion', 'cómo se compara con otros meses')}
       <div class="granCifra num">${eur(total)}</div>
       <div class="delta">${delta === null ? 'Sin mes anterior con el que comparar'
-        : (delta >= 0 ? '▲ ' : '▼ ') + Math.abs(delta).toFixed(0) + '% respecto a ' +
-          nombreCiclo(off-1).split(' ')[0].toLowerCase()}</div>
-      ${mediaPrev ? `<div class="delta">${total > mediaPrev ? '▲ ' : '▼ '}${
-        Math.abs(Math.round(((total - mediaPrev)/mediaPrev)*100))}% respecto a ${
-          trimestre.length === 1 ? 'el mes anterior'
-          : `tu media de los últimos ${trimestre.length} meses`
+        : `${delta >= 0 ? '▲ ' : '▼ '}${Math.abs(delta).toFixed(0)}% respecto a ${mesPrev}${alturas}`}</div>
+      ${/* Con un solo mes previo esta línea repetía la de arriba palabra por
+            palabra —«▼ 52% respecto a agosto» y «▼ 52% respecto a el mes
+            anterior»—, con el «a el» de regalo. Una vara de medir que solo
+            tiene un dato ya la da la línea anterior. */''
+      }${mediaPrev && trimestre.length > 1 ? `<div class="delta">${
+        hastaAqui > mediaPrev ? '▲ ' : '▼ '}${
+        Math.abs(Math.round(((hastaAqui - mediaPrev) / mediaPrev) * 100))
+        }% respecto a tu media de los últimos ${trimestre.length} meses${alturas
         } <span class="num">(${eur0(mediaPrev)})</span></div>` : ''}
       ${presu ? `<div class="barra" style="margin-top:14px"><i class="${total>presu?'pasado':''}"
           style="width:${Math.min(total/presu,1)*100}%"></i></div>
         <div class="delta">${total <= presu
           ? `Te quedan ${eurN0(presu-total)} de los ${eurN0(presu)} del mes`
           : `Has pasado el presupuesto en ${eurN0(total-presu)}`}</div>` : ''}
-    </div>
+    </div>`)}
 
-    ${entra > 0 ? `<div class="rejilla">
-      <div class="mini"><b class="num" style="color:var(--ingreso)">${eur0(entra)}</b><small>ingresos</small></div>
-      <div class="mini"><b class="num" style="${entra-total<0?'color:var(--alerta)':''}">
-        ${entra-total>=0?'+':''}${eur0(entra-total)}</b><small>balance del mes</small></div>
-      <div class="mini"><b class="num">${Math.max(0,Math.round((1-total/entra)*100))}%</b>
-        <small>de lo que entra, ahorrado</small></div>
-      <div class="mini"><b class="num ${esfuerzo > 100 ? 'rojo' : ''}">${esfuerzo}%</b>
-        <small>de tus ingresos, gastado</small></div>
-    </div>
-    <div class="rejilla">
-      <div class="mini"><b class="num">${eur0(media)}</b><small>gasto al día</small></div>
-      <div class="mini"><b class="num">${sinGastar}</b><small>días sin gastar</small></div>
-      <div class="mini"><b class="num">${ratioFijo}%</b><small>del gasto es fijo</small></div>
-      <div class="mini"><b class="num">${proyectable ? eur0(proyeccion) : '—'}</b>
-        <small>${proyectable ? 'proyección a fin de mes' : 'proyección desde el día 7'}</small></div>
-    </div>` : `<div class="rejilla">
-      <div class="mini"><b class="num">${eur0(media)}</b><small>al día de media</small></div>
-      <div class="mini"><b class="num">${sinGastar}</b><small>días sin gastar</small></div>
-      <div class="mini"><b class="num">${eur0(top[1])}</b><small>el ${new Date(desdeClave(top[0]))
-        .toLocaleDateString('es-ES',{day:'numeric',month:'short'})}, el día más caro</small></div>
-      <div class="mini"><b class="num">${proyectable ? eur0(proyeccion) : '—'}</b>
-        <small>${enCurso ? (proyectable ? 'proyección a fin de mes' : 'proyección desde el día 7')
-                         : 'gasto medio del mes'}</small></div>
-    </div>
+    ${entra > 0 ? `${zonaMet(`<div class="rejilla">
+      ${mini(eur0(entra), 'ingresos', { estilo: 'color:var(--ingreso)' })}
+      ${mini(`${entra-total>=0?'+':''}${eur0(entra-total)}`, 'balance del mes',
+             { estilo: entra-total<0 ? 'color:var(--alerta)' : '' })}
+      ${mini(`${Math.max(0,Math.round((1-total/entra)*100))}%`, 'de lo que entra, ahorrado',
+             { ayuda: 'ahorrado' })}
+      ${mini(`${esfuerzo}%`, 'de tus ingresos, gastado',
+             { clase: esfuerzo > 100 ? 'rojo' : '', ayuda: 'esfuerzo' })}
+    </div>`)}
+    ${zonaMet(`<div class="rejilla">
+      ${mini(eur0(media), 'gasto al día', { ayuda: 'aldia' })}
+      ${mini(sinGastar, 'días sin gastar', { ayuda: 'sinGastar' })}
+      ${mini(`${ratioFijo}%`, 'del gasto es fijo', { ayuda: 'fijo' })}
+      ${mini(proyectable ? eur0(proyeccion) : '—',
+             proyectable ? 'proyección a fin de mes' : 'proyección desde el día 7',
+             { ayuda: 'proyeccion' })}
+    </div>`)}
     ${fijoMes ? `<p class="pieNota">${eur0(fijoMes)} de gasto fijo, el ${ratioFijo}% del total.
-      Lo variable, que es donde puedes actuar, son ${eur0(total - fijoMes)}.</p>` : ''}`}
+      Lo variable, que es donde puedes actuar, son ${eur0(total - fijoMes)}.</p>` : ''}`
+    : `${zonaMet(`<div class="rejilla">
+      ${mini(eur0(media), 'al día de media', { ayuda: 'aldia' })}
+      ${mini(sinGastar, 'días sin gastar', { ayuda: 'sinGastar' })}
+      ${mini(eur0(top[1]), `el ${new Date(desdeClave(top[0]))
+        .toLocaleDateString('es-ES',{day:'numeric',month:'short'})}, el día más caro`)}
+      ${mini(proyectable ? eur0(proyeccion) : '—',
+             enCurso ? (proyectable ? 'proyección a fin de mes' : 'proyección desde el día 7')
+                     : 'gasto medio del mes',
+             { ayuda: enCurso ? 'proyeccion' : '' })}
+    </div>`)}`}
 
     <div class="panel">
       <div class="rotulo">En qué se te va${
@@ -927,7 +964,101 @@ function pintarMes(c) {
       <div class="rotulo">Últimos seis meses</div>
       ${grafMeses()}
     </div>`;
+
+  enchufarAyudas(cuerpo, ayudas);
 }
+
+/* ==========================================================================
+   Qué significa esta cifra
+   Un interrogante en la esquina de la métrica. No abre un diálogo: despliega
+   el texto debajo de su rejilla, porque tapar la cifra por la que se pregunta
+   sería la peor forma de responder. Solo lo llevan las métricas cuyo nombre no
+   se explica solo; «ingresos» no necesita nota al pie.
+   ========================================================================== */
+/* El botón mide los 44px de rigor y el disco que se ve son 20: si el objetivo
+   táctil fuera el disco, en un móvil habría que apuntar. */
+const queEs = (id, etiqueta) => `<button class="queEs" data-ayuda="${id}"
+  aria-expanded="false" aria-label="Qué significa: ${escapar(etiqueta)}"><i>?</i></button>`;
+
+const mini = (valor, etiqueta, { ayuda = '', clase = '', estilo = '' } = {}) =>
+  `<div class="mini">${ayuda ? queEs(ayuda, etiqueta) : ''}<b class="num${clase ? ' ' + clase : ''}"${
+    estilo ? ` style="${estilo}"` : ''}>${valor}</b><small>${etiqueta}</small></div>`;
+
+/** Envuelve un bloque con su hueco de explicación, justo debajo. */
+const zonaMet = dentro => /data-ayuda="/.test(dentro)
+  ? `<div class="zonaMet">${dentro}<div class="ayudaMet" hidden></div></div>` : dentro;
+
+function enchufarAyudas(raiz, ayudas) {
+  raiz.querySelectorAll('.zonaMet').forEach(zona => {
+    const caja = zona.querySelector('.ayudaMet');
+    zona.querySelectorAll('.queEs').forEach(boton => {
+      boton.onclick = () => {
+        const abierto = boton.getAttribute('aria-expanded') === 'true';
+        zona.querySelectorAll('.queEs').forEach(b => b.setAttribute('aria-expanded', 'false'));
+        if (abierto) { caja.hidden = true; return }
+        const a = ayudas[boton.dataset.ayuda];
+        if (!a) return;
+        boton.setAttribute('aria-expanded', 'true');
+        caja.innerHTML = `<b>${escapar(a.t)}</b><p>${a.c}</p>`;
+        caja.hidden = false;
+      };
+    });
+  });
+}
+
+/** Los textos, con los números de este mes dentro: una explicación con tus
+ *  cifras se entiende de una lectura; una genérica hay que traducirla. */
+function ayudasMes(d) {
+  const dias = n => `${n} día${n === 1 ? '' : 's'}`;
+  return {
+    comparacion: { t: 'Cómo se compara con otros meses', c: d.parcial
+      ? `Llevas ${dias(d.diasPasados)} de ${d.diasMes} de este mes. Comparar lo gastado
+         hasta hoy con <b>${d.mesPrev} entero</b> daría una caída enorme el día 2 y otra
+         casi igual el día 3: no mediría tus decisiones, mediría el calendario. Así que los
+         dos lados usan la misma ventana, los primeros ${dias(d.diasComp)} de cada mes:
+         ${eur(d.hastaAqui)} frente a ${eur(d.prev)}. La cifra grande de arriba sí es todo
+         el mes.`
+      : `Este mes está cerrado, así que se compara entero contra el anterior entero y contra
+         la media de los meses previos. En el mes en curso la comparación se recorta a los
+         días ya vividos, para no medir el calendario.` },
+
+    aldia: { t: 'Gasto al día', c: `Lo gastado dividido entre los días que <b>ya han
+      pasado</b> (${dias(d.diasPasados)}), no entre los ${d.diasMes} del mes:
+      ${eur(d.total)} ÷ ${d.diasPasados} = ${eur(d.media)}. Dividir entre el mes entero
+      daría una media que baja sola cada mañana sin que tú hagas nada.` },
+
+    sinGastar: { t: 'Días sin gastar', c: `Días ya vividos del mes sin ningún gasto
+      registrado: ${d.diasPasados} menos los ${d.diasPasados - d.sinGastar} que sí tienen
+      = ${d.sinGastar}. Los ingresos no cuentan. Un día en el que pagaste algo y no lo
+      apuntaste cuenta aquí como día sin gastar.` },
+
+    fijo: { t: 'Qué parte del gasto es fija', c: `De ${eur(d.total)} gastados,
+      ${eur(d.fijoMes)} vienen de tus gastos fijos, los que se generan solos cada mes. El
+      resto, ${eur(d.total - d.fijoMes)}, es lo variable: lo único sobre lo que una decisión
+      de hoy puede cambiar algo.` },
+
+    proyeccion: { t: 'Proyección a fin de mes', c: d.proyectable
+      ? `No es la media del mes estirada sin más. Los fijos ya están enteros en la cuenta, y
+         promediarlos los contaría dos veces. Así que se separan: lo variable va a
+         ${eur(d.mediaVar)} al día (${eur(d.total - d.fijoMes)} ÷ ${d.diasPasados}), se
+         estira a los ${d.diasMes} días del mes y se le suman los ${eur(d.fijoMes)} de fijos
+         una sola vez → ${eur(d.proyeccion)}. Da por hecho que sigues al ritmo de estos
+         días: un viaje o una compra grande la disparan.`
+      : `Se calla hasta el día 7. Con tres o cuatro días de datos, estirar la media al mes
+         entero da una cifra que cambia de cientos de euros cada vez que compras el pan.` },
+
+    ahorrado: { t: 'De lo que entra, ahorrado', c: `Lo que no te has gastado de lo ingresado
+      este mes: (${eur(d.entra)} − ${eur(d.total)}) ÷ ${eur(d.entra)}. Es el complemento
+      exacto de «de tus ingresos, gastado»: las dos cifras suman 100%. Solo cuenta lo
+      registrado en la app, no lo que ya tuvieras ahorrado antes.` },
+
+    esfuerzo: { t: 'De tus ingresos, gastado', c: `${eur(d.total)} de gasto sobre
+      ${eur(d.entra)} de ingresos = ${d.esfuerzo}%. Por encima de 100% estás gastando más de
+      lo que entra este mes${d.parcial
+        ? ', aunque a mitad de mes es normal si la nómina entra al final' : ''}.` },
+  };
+}
+
 const desdeClave = s => { const [a,m,d] = s.split('-').map(Number); return new Date(a, m-1, d) };
 
 /* ==========================================================================
